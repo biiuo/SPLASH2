@@ -9,20 +9,20 @@ Presenta una síntesis del proyecto, incluyendo el contexto en el que surge, la 
 
 ### Primer informe
 
-- [Primer Informe.md](./PrimerInforme.md): Documento que presenta el planteamiento del problema, los objetivos, la solución propuesta, el estado del arte, la metodología de desarrollo y el plan de trabajo del proyecto.
+- [Primer Informe.md](./pf_modelo_repositorio-main/PrimerInforme.md): Documento que presenta el planteamiento del problema, los objetivos, la solución propuesta, el estado del arte, la metodología de desarrollo y el plan de trabajo del proyecto.
 
 ### Segundo informe
 
-- [Segundo Informe.md](./SegundoInforme.md): Documento que presenta el estado actual del proyecto, incluyendo los avances logrados, las validaciones realizadas y los aspectos pendientes.
+- [Segundo Informe.md](./pf_modelo_repositorio-main/SegundoInforme.md): Documento que presenta el estado actual del proyecto, incluyendo los avances logrados, las validaciones realizadas y los aspectos pendientes.
 
 
 ### Informe final
 
 | Documento | Descripción |
 |---|---|
-| [InformeFinal.md](./InformeFinal.md) | Documento principal del proyecto |
-| [Instalación.md](./Instalación.md) | Guía de instalación, desarrollo y despliegue |
-| [Desarrollo.md](./Desarrollo.md) | Detalles técnicos del desarrollo |
+| [InformeFinal.md](./pf_modelo_repositorio-main/InformeFinal.md) | Documento principal del proyecto |
+| [Instalación.md](./pf_modelo_repositorio-main/Instalación.md) | Guía de instalación, desarrollo y despliegue |
+| [Desarrollo.md](./pf_modelo_repositorio-main/Desarrollo.md) | Detalles técnicos del desarrollo |
 
 ## Estudiantes
 
