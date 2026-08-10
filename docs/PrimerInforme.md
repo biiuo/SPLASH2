@@ -69,45 +69,21 @@ Define los límites del proyecto especificando qué incluye y qué no incluye.
 
 ## 4. Objetivos
 
-Establece el objetivo general del proyecto y los objetivos específicos que guiarán su desarrollo.
-
-Los objetivos refieren a la situación o logros que se pretenden alcanzar con el desarrollo del proyecto. Todos los demás elementos y su estructura se derivan de estos: metodología, marco teórico, resultados, etc. Por ello debe prestarse **mayor atención** en su proceso de formulación.
-
-Deben ser **claros, viables, susceptibles de alcanzarse y congruentes entre sí**. Son la base de la evaluación del proyecto.
-
-Se recomienda que sean **SMART**:
-
-- **S**pecific (específicos): definidos con precisión.
-- **M**easurable (medibles): verificables mediante indicadores.
-- **A**chievable (alcanzables): realistas según los recursos y el tiempo.
-- **R**elevant (relevantes): alineados con el problema y la solución.
-- **T**ime-bound (con plazo): acotados en el tiempo del proyecto.
-
-Los objetivos deben redactarse con **verbos en infinitivo** que indiquen acciones concretas y verificables. Verbos recomendados: *desarrollar, diseñar, implementar, evaluar, analizar, determinar, establecer, validar, modelar, construir, integrar, optimizar, documentar, automatizar, configurar, definir, identificar, clasificar, comparar, proponer*. Evitar verbos ambiguos como *conocer, entender, estudiar, saber*.
-
 ### 4.1 Objetivo general
 
-Muestra los cambios o efectos que se desean lograr en la situación inicial definida como problemática. Responde a la relación entre el **problema planteado** y los **propósitos o metas del desarrollo**.
-
-Formula de manera clara el propósito principal del proyecto.
-
-**Ejemplo:**
-
-> Definir proceso y estructura metodológica en la empresa XYZ para identificar, evaluar y reducir los riesgos relacionados con TI (Cumplimiento, estratégicos, operacionales) que puedan tener un impacto potencial sobre las actividades de TI que soportan las operaciones de negocio en el 2022, dentro de los niveles de tolerancia establecidos por la organización.
-
-*Análisis SMART del ejemplo:*
-- **S** — Específico: define proceso y estructura metodológica para riesgos TI (cumplimiento, estratégicos, operacionales).
-- **M** — Medible: se puede verificar mediante la existencia del proceso y estructura definidos.
-- **A** — Alcanzable: acotado a una empresa y a riesgos TI específicos.
-- **R** — Relevante: impacta directamente las operaciones de negocio soportadas por TI.
-- **T** — Con plazo: acotado al año 2022.
+Diseñar e implementar un sistema inteligente basado en visión por computador que permita realizar el seguimiento automático de nadadores durante sus sesiones de entrenamiento en la piscina semiolímpica de la Universidad del Norte, mediante una única cámara calibrada contra las medidas físicas predefinidas de la piscina, registrando tiempos, recorridos e indicadores de desempeño que apoyen el análisis objetivo del entrenamiento por parte de entrenadores y deportistas.
 
 ### 4.2 Objetivos específicos
 
-Hacen referencia a los productos o resultados que son necesarios para alcanzar el objetivo general. Son los fines inmediatos del desarrollo, se dimensionan en términos de los resultados esperados o metas, con verbos que indican acciones concretas y con un mayor nivel de detalle.
-
-Descompone el objetivo general en metas concretas, observables y alcanzables que orienten el desarrollo del trabajo.
-
+Capturar y calibrar el video de entrenamiento mediante una cámara fija, estableciendo la correspondencia entre coordenadas de imagen y distancias reales a partir de las medidas estáticas predefinidas de la piscina (longitud de carril, marcas de fondo, banderas de vuelta).
+- Preprocesar y estandarizar los frames capturados (redimensionamiento, corrección de iluminación, mejora de contraste, reducción de ruido, corrección de perspectiva y normalización), garantizando que únicamente frames estandarizados y validados sean enviados al modelo de inteligencia artificial.
+- Detectar y realizar seguimiento (tracking) automático de los nadadores presentes en el carril mediante un modelo YOLO con capacidades integradas de detección y tracking (p. ej. YOLO + ByteTrack/DeepSORT), manteniendo la identidad de cada nadador durante toda la sesión, incluso ante oclusiones temporales o cambios de dirección.
+- Identificar automáticamente eventos de nado, tales como el inicio y fin de cada vuelta, cambios de dirección, períodos de descanso y finalización del entrenamiento.
+- Calcular métricas de desempeño por nadador —tiempo por vuelta, tiempo total, distancia recorrida, velocidad promedio, ritmo de entrenamiento, número de largos y tiempos de descanso— a partir de los datos generados por el módulo de tracking.
+- Diseñar una arquitectura de comunicación entre el Servidor de IA y el Servidor Web que permita el envío confiable de métricas, la validación de la información recibida y la sincronización del estado de ambos servicios (activo/inactivo, heartbeat).
+- Desarrollar una plataforma web (backend + frontend) que permita a entrenadores y nadadores visualizar estadísticas en tiempo real, consultar el historial de entrenamientos y comparar sesiones anteriores.
+- Generar reportes de desempeño exportables en formato PDF y CSV, que resuman las métricas individuales y la evolución del rendimiento del nadador.
+- Gestionar los roles de usuario (administrador, entrenador, nadador) mediante un módulo de autenticación y autorización que restrinja el acceso a las funciones según el perfil correspondiente.
 ## 5. Solución propuesta
 
 Describe a alto nivel la solución planteada para abordar el problema identificado. Explica qué se propone construir, quiénes serían sus usuarios, cómo funcionaría de manera general y por qué constituye una respuesta adecuada dentro del alcance definido.
