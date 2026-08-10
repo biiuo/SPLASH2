@@ -63,7 +63,7 @@ El alcance de este proyecto comprende el diseño e implementación de un **proto
 7. Arquitectura de dos servidores: **Servidor de IA** (preprocesamiento, detección, tracking, motor de eventos y motor analítico) y **Servidor Web** (backend + frontend), con comunicación y sincronización de estado entre ambos (heartbeat).
 8. Almacenamiento de las métricas obtenidas en una base de datos.
 9. Plataforma web para visualizar estadísticas individuales e históricas en tiempo real.
-10. Generación de reportes de desempeño y evolución del entrenamiento, exportables en PDF y CSV.
+10. Generación de reportes de desempeño y evolución del entrenamiento con posibilidad de exportar
 11. Panel para entrenadores con seguimiento de los nadadores a su cargo.
 12. Módulo de autenticación con roles diferenciados (administrador, entrenador, nadador).
 
