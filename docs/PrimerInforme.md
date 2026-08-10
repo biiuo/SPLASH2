@@ -51,21 +51,33 @@ Indica las principales limitaciones y condiciones asumidas para plantear la solu
 
 ## 3. Alcance del proyecto
 
-Define los límites del proyecto especificando qué incluye y qué no incluye.
-
 ### Incluye
 
-- **Funcionalidades principales del sistema**.
-- **Tipo de usuarios involucrados**.
-- **Nivel de madurez de la solución** (prototipo, MVP, diseño detallado).
-- **Entornos cubiertos** (web, móvil, backend, integración).
+1. Captura de video en tiempo real mediante una cámara fija ubicada en la piscina semiolímpica.
+2. Calibración del sistema mediante las medidas físicas predefinidas de la piscina (longitud de carril, marcas de fondo, banderas de vuelta).
+3. Preprocesamiento y estandarización de los frames (redimensionamiento, corrección de iluminación, mejora de contraste, reducción de ruido, corrección de perspectiva, normalización) antes de su envío al modelo de IA.
+4. Detección y seguimiento automático del nadador mediante un modelo YOLO con tracking integrado.
+5. Identificación automática del inicio y final de cada vuelta.
+6. Cálculo automático de: tiempo total de entrenamiento, tiempo por vuelta, número de largos completados, distancia recorrida, velocidad promedio, ritmo de nado y tiempo de descanso entre series.
+7. Arquitectura de dos servidores: **Servidor de IA** (preprocesamiento, detección, tracking, motor de eventos y motor analítico) y **Servidor Web** (backend + frontend), con comunicación y sincronización de estado entre ambos (heartbeat).
+8. Almacenamiento de las métricas obtenidas en una base de datos.
+9. Plataforma web para visualizar estadísticas individuales e históricas en tiempo real.
+10. Generación de reportes de desempeño y evolución del entrenamiento, exportables en PDF y CSV.
+11. Panel para entrenadores con seguimiento de los nadadores a su cargo.
+12. Módulo de autenticación con roles diferenciados (administrador, entrenador, nadador).
 
-### No incluye
+### No incluye / Limitaciones
 
-- Funcionalidades futuras o deseables.
-- Implementaciones a escala productiva.
-- Integraciones externas no críticas.
-- Soporte operativo post-proyecto.
+1. Medición de variables fisiológicas como frecuencia cardíaca, saturación de oxígeno o consumo energético.
+2. Corrección automática de la técnica de nado mediante análisis biomecánico avanzado.
+3. **Identificación de los diferentes estilos de natación** (libre, espalda, pecho, mariposa) con evaluación técnica detallada; el sistema no distingue el estilo que emplea el nadador, únicamente su desplazamiento y posición.
+4. **Sincronización entre múltiples cámaras**: al utilizarse una sola cámara, el sistema no contempla la fusión, calibración cruzada ni sincronización temporal entre distintas fuentes de video.
+5. **Cobertura limitada a un solo carril o campo visual**: el seguimiento simultáneo de múltiples carriles con una sola cámara queda sujeto a validación técnica posterior y no está garantizado dentro del alcance actual.
+6. **Condiciones adversas del entorno**: el sistema no garantiza su desempeño óptimo ante variaciones fuertes de iluminación, reflejos en el agua, salpicaduras, sombras o condiciones climáticas que afecten la calidad de la captura de video.
+7. **Limitaciones del tracking**: pérdida temporal o permanente del identificador de un nadador en escenarios de oclusión prolongada, alta similitud visual entre nadadores (mismo color de gorro/traje) o movimientos bruscos fuera del campo de visión de la cámara.
+8. **Latencia en el procesamiento con múltiples nadadores simultáneos**: cuando existe un número elevado de nadadores en el campo visual, el tiempo de procesamiento por frame puede incrementarse, afectando la actualización de métricas en tiempo real.
+9. Integración con relojes inteligentes u otros dispositivos wearables.
+10. Gestión administrativa de reservas o acceso a la piscina.
 
 ## 4. Objetivos
 
