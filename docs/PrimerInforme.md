@@ -101,16 +101,148 @@ Diseñar e implementar un sistema inteligente basado en visión por computador q
 9. Gestionar los roles de usuario (administrador, entrenador, nadador) mediante un módulo de autenticación y autorización que restrinja el acceso a las funciones según el perfil correspondiente.
 
 ---
+## 5. Marco conceptual
 
-## 5. Solución propuesta
+### 5.1. Visión por computador
 
-Safe Splash 2 propone construir un sistema compuesto por una cámara fija, un **Servidor de IA** y un **Servidor Web** que trabajan de forma coordinada para transformar video en información útil de entrenamiento. A alto nivel, el flujo de procesamiento sigue la secuencia: *Cámara → Captura de video → Preprocesamiento → Detector de nadadores (YOLO) → Tracker (ByteTrack/DeepSORT) → Motor de eventos → Calibración/transformación espacial → Cálculo de métricas → Base de datos → API/Backend → Dashboard web*.
+La visión por computador es el conjunto de técnicas utilizadas para obtener información de interés a partir de imágenes y videos. En el contexto de Safe Splash 2, constituye el componente encargado de transformar las imágenes capturadas por la cámara en información sobre la presencia, posición y desplazamiento de los nadadores.
 
-El **Servidor de IA** concentra el procesamiento más intensivo: recibe el video capturado, lo estandariza (redimensionamiento, corrección de iluminación y contraste, reducción de ruido, corrección de perspectiva), detecta y sigue al nadador mediante un modelo YOLO con tracking integrado, identifica eventos de nado a partir de la trayectoria (cruces de líneas virtuales, cambios de dirección) y calcula las métricas de desempeño. El **Servidor Web**, por su parte, recibe estas métricas ya calculadas, las almacena en una base de datos, gestiona la autenticación y los roles de usuario, y expone la información mediante una plataforma con frontend accesible a entrenadores y nadadores. Ambos servidores se comunican mediante una arquitectura con sincronización de estado (heartbeat), lo que permite detectar caídas de servicio y mantener la confiabilidad del envío de métricas.
+La visión por computador resulta especialmente relevante en este proyecto porque permite realizar mediciones sin necesidad de instalar sensores directamente sobre el cuerpo del deportista.
 
-Los usuarios del sistema son tres: **nadadores**, que consultan su historial y evolución de desempeño; **entrenadores**, que además pueden hacer seguimiento a los nadadores a su cargo y generar reportes exportables; y **administradores**, encargados de la gestión general de usuarios y roles. Esta solución constituye una respuesta adecuada al problema planteado porque automatiza precisamente las tareas que hoy recaen por completo en el entrenador —cronometraje, registro y cálculo de métricas—, sin requerir instrumentación física del nadador ni una infraestructura de cámaras múltiples, ajustándose así a una restricción real y común en entornos universitarios: la disponibilidad de una sola cámara fija con cobertura parcial de la piscina.
+En investigaciones recientes de natación se han utilizado cámaras para detectar y analizar automáticamente el movimiento de los nadadores. Chern et al. (2025), por ejemplo, desarrollaron un sistema de análisis basado en video y aprendizaje automático para obtener información cuantitativa del desempeño.
+
+### 5.2. Procesamiento de imágenes y video
+
+El procesamiento de imágenes comprende las operaciones realizadas sobre los cuadros obtenidos por una cámara antes de ejecutar las etapas de detección y seguimiento.
+
+En una piscina, esta etapa puede ser importante debido a que los reflejos, las ondas, las salpicaduras y otros elementos visuales pueden generar información que dificulte la detección del nadador.
+
+Por ello, Safe Splash 2 contempla la posibilidad de aplicar operaciones de reducción de ruido, filtrado y segmentación antes de ejecutar el detector. El informe original identifica específicamente el ruido visual producido por el agua como una de las restricciones técnicas del proyecto.
+
+### 5.3. Detección de objetos
+
+La detección de objetos consiste en localizar objetos dentro de una imagen y determinar su posición mediante regiones delimitadoras, normalmente conocidas como bounding boxes.
+
+En Safe Splash 2, el objeto de interés es el nadador. El detector deberá identificar su posición en cada cuadro del video para posteriormente proporcionar esta información al módulo de seguimiento.
+
+Los modelos de la familia YOLO son especialmente relevantes para este problema porque fueron diseñados para realizar detección de objetos de manera eficiente. Además, investigaciones específicas sobre natación han utilizado YOLO adaptado al dominio para detectar nadadores. Chern et al. (2025) utilizaron YOLOv4 como modelo inicial y realizaron transferencia de aprendizaje utilizando más de 120.000 imágenes etiquetadas de nadadores.
+
+### 5.4. YOLO y aprendizaje por transferencia
+
+YOLO (You Only Look Once) corresponde a una familia de modelos de detección de objetos que realizan la localización y clasificación de objetos directamente a partir de la imagen.
+
+Una dificultad importante del proyecto consiste en que los nadadores presentan una apariencia diferente a las personas en escenarios terrestres. Además, el agua y las salpicaduras pueden generar patrones visuales que dificultan la detección.
+
+Por esta razón, una alternativa consiste en utilizar aprendizaje por transferencia, partiendo de un modelo previamente entrenado y adaptándolo mediante datos específicos de nadadores.
+
+Este procedimiento fue utilizado por Chern et al. (2025), quienes adaptaron YOLOv4 mediante transferencia de aprendizaje para desarrollar un detector específico para nadadores.
+
+### 5.5. Seguimiento de objetos
+
+La detección permite localizar un nadador en un cuadro determinado; el seguimiento de objetos busca mantener la correspondencia entre las detecciones de diferentes cuadros.
+
+Esto permite construir una trayectoria temporal del objeto.
+
+En Safe Splash 2, el seguimiento es necesario porque las métricas no dependen únicamente de saber dónde está el nadador, sino de conocer cómo cambia su posición a través del tiempo.
+
+### 5.6. Seguimiento multiobjeto
+
+El Multiple Object Tracking (MOT) consiste en localizar diferentes objetos y mantener una identidad asociada a cada uno a lo largo de una secuencia de video.
+
+Este concepto resulta relevante porque Safe Splash 2 debe contemplar la posibilidad de que existan varios nadadores dentro de la zona observada.
+
+El seguimiento multiobjeto presenta problemas como pérdida de identidad, fragmentación de trayectorias y oclusiones. ByteTrack fue desarrollado precisamente para mejorar la asociación entre detecciones y trayectorias, utilizando también detecciones de menor confianza para recuperar objetos que podrían perderse durante el seguimiento.
+
+### 5.7. ByteTrack
+
+ByteTrack es un algoritmo de seguimiento multiobjeto propuesto por Zhang et al. (2022).
+
+Su principal característica es que no descarta automáticamente todas las detecciones que presentan una confianza baja. En lugar de ello, intenta asociarlas con trayectorias existentes para recuperar objetos que pueden encontrarse parcialmente ocultos.
+
+Los autores reportaron resultados de 80,3 MOTA y 77,3 IDF1 en MOT17, con una velocidad de aproximadamente 30 FPS utilizando una GPU V100 en el experimento presentado en su trabajo.
+
+Estos valores corresponden a benchmarks generales de seguimiento y no deben interpretarse como resultados esperados para Safe Splash 2. El proyecto deberá evaluar experimentalmente el comportamiento del algoritmo en el entorno acuático específico.
+
+### 5.8. Trayectoria
+
+La trayectoria representa la evolución de la posición de un nadador a través del tiempo.
+
+Si el detector proporciona las coordenadas del centro de la región delimitadora y el tracker mantiene la identidad del nadador, es posible construir una secuencia:
+
+posición₁ → posición₂ → posición₃ → ... → posiciónₙ
+
+Esta trayectoria constituye la información fundamental para posteriormente detectar desplazamientos, cruces de líneas y cambios de dirección.
+
+### 5.9. Detección de eventos
+
+Un evento corresponde a una situación identificable dentro de la trayectoria del nadador.
+
+En Safe Splash 2, algunos eventos pueden definirse mediante líneas o zonas virtuales dentro de la imagen. Por ejemplo:
+
+- entrada a la zona observable;
+- salida de la zona observable;
+- cruce de una línea virtual;
+- cambio de dirección inferido;
+- inicio de un intervalo;
+- finalización de un intervalo.
+
+Debido a que la cámara no observa directamente los extremos de la piscina, el sistema debe diferenciar entre eventos observados directamente y eventos inferidos. Esta distinción es fundamental para evitar atribuir al sistema capacidades que la cámara no posee.
+
+### 5.10. Calibración de cámara
+
+La calibración permite establecer la relación entre las coordenadas de la imagen y el espacio físico.
+
+Una imagen representa posiciones en píxeles, mientras que las métricas deportivas requieren unidades físicas como metros y segundos.
+
+La literatura sobre seguimiento de nadadores ha utilizado técnicas de transformación geométrica para calibrar videos y obtener información espacial. Un sistema de seguimiento de nadadores basado en un enfoque de objetivos relacionados utilizó transformación lineal directa para calibrar los videos y posteriormente estimar el movimiento y la velocidad.
+
+### 5.11. Homografía
+
+La homografía es una transformación proyectiva que permite establecer correspondencias entre dos planos.
+
+En el proyecto puede utilizarse para transformar puntos identificados en la imagen hacia un sistema de coordenadas asociado al plano de la piscina.
+
+Esta transformación es especialmente útil cuando se conocen puntos de referencia del entorno, como las líneas de los carriles o determinadas posiciones cuya distancia real sea conocida.
+
+La calibración debe validarse experimentalmente, debido a que errores en la correspondencia entre píxeles y posiciones físicas se trasladan directamente a las métricas de distancia y velocidad.
+
+### 5.12. Distancia, velocidad y ritmo
+
+Una vez obtenida una estimación de la posición del nadador en coordenadas físicas, es posible calcular diferentes métricas.
+
+La distancia recorrida corresponde a la longitud del desplazamiento estimado.
+
+La velocidad promedio puede calcularse como:
+
+**v = d / Δt**
+
+donde:
+
+- **v** representa la velocidad promedio;
+- **d** representa la distancia recorrida;
+- **Δt** representa el intervalo de tiempo.
+
+El ritmo puede expresarse como el tiempo requerido para recorrer una distancia determinada, por ejemplo minutos por cada 100 metros.
+
+Sin embargo, debido a la cobertura parcial de Safe Splash 2, estas métricas deben definirse de acuerdo con la zona realmente observada y no asumir automáticamente que la cámara observa la totalidad de una piscina de 25 metros.
+
+### 5.13. Tiempo de descanso
+
+El tiempo de descanso puede estimarse identificando períodos durante los cuales la trayectoria del nadador permanece prácticamente estacionaria o permanece dentro de una zona determinada durante un intervalo de tiempo.
+
+Esta métrica requiere definir experimentalmente un umbral de movimiento para distinguir entre una pausa real y pequeñas variaciones de posición producidas por el movimiento del agua o por fluctuaciones del detector.
+
+### 5.14. Tiempo cercano al real
+
+El término near real-time hace referencia a un sistema que procesa los datos con una latencia suficientemente baja para proporcionar información durante o inmediatamente después de la captura.
+
+El informe propone explícitamente un procesamiento cercano al tiempo real, sin exigir que el sistema cumpla necesariamente una condición estricta de tiempo real.
+
+Esta definición resulta apropiada porque permite evaluar experimentalmente la latencia sin establecer previamente un valor que todavía no ha sido medido.
 
 ---
+
+
 
 ## 6. Estado del arte / soluciones relacionadas
 
@@ -137,14 +269,23 @@ La literatura especializada muestra una evolución desde sistemas basados exclus
 **Resultados esperados de la revisión.** La revisión evidencia que existen soluciones consolidadas para partes aisladas del problema —detección de nadadores, seguimiento de objetos (ByteTrack, DeepSORT), estimación de pose y cálculo de métricas de desplazamiento—, pero ninguna de ellas combina, con una única cámara fija de bajo costo, la calibración física de la piscina, el cálculo de métricas de entrenamiento orientadas al entrenador (tiempo por vuelta, distancia, ritmo, descansos) y una plataforma web con roles diferenciados para consulta histórica. Los sistemas con mayor precisión reportada (Chern et al., 2025; Dronaquatics, 2026; SMU/SUTD, 2025) dependen de infraestructuras de captura amplias (múltiples cámaras o drones) inviables en un entorno universitario típico, mientras que las soluciones de cámara única (SwimmerNET, 2023; proyectos open-source) no cubren el cálculo de métricas de entrenamiento ni la capa de aplicación web. Esta combinación de restricciones —cámara única, bajo costo y orientación a entrenamiento— constituye el vacío técnico que Safe Splash 2 busca atender, y su aporte no debe plantearse como la creación de un nuevo algoritmo de detección o tracking, sino como la integración y adaptación de técnicas existentes a un escenario específico con restricciones reales de hardware, campo visual y procesamiento.
 
 ---
+## 7. Solución propuesta
 
-## 7. Metodología de desarrollo y plan de trabajo
+Safe Splash 2 propone construir un sistema compuesto por una cámara fija, un **Servidor de IA** y un **Servidor Web** que trabajan de forma coordinada para transformar video en información útil de entrenamiento. A alto nivel, el flujo de procesamiento sigue la secuencia: *Cámara → Captura de video → Preprocesamiento → Detector de nadadores (YOLO) → Tracker (ByteTrack/DeepSORT) → Motor de eventos → Calibración/transformación espacial → Cálculo de métricas → Base de datos → API/Backend → Dashboard web*.
 
-### 7.1 Enfoque metodológico
+El **Servidor de IA** concentra el procesamiento más intensivo: recibe el video capturado, lo estandariza (redimensionamiento, corrección de iluminación y contraste, reducción de ruido, corrección de perspectiva), detecta y sigue al nadador mediante un modelo YOLO con tracking integrado, identifica eventos de nado a partir de la trayectoria (cruces de líneas virtuales, cambios de dirección) y calcula las métricas de desempeño. El **Servidor Web**, por su parte, recibe estas métricas ya calculadas, las almacena en una base de datos, gestiona la autenticación y los roles de usuario, y expone la información mediante una plataforma con frontend accesible a entrenadores y nadadores. Ambos servidores se comunican mediante una arquitectura con sincronización de estado (heartbeat), lo que permite detectar caídas de servicio y mantener la confiabilidad del envío de métricas.
+
+Los usuarios del sistema son tres: **nadadores**, que consultan su historial y evolución de desempeño; **entrenadores**, que además pueden hacer seguimiento a los nadadores a su cargo y generar reportes exportables; y **administradores**, encargados de la gestión general de usuarios y roles. Esta solución constituye una respuesta adecuada al problema planteado porque automatiza precisamente las tareas que hoy recaen por completo en el entrenador —cronometraje, registro y cálculo de métricas—, sin requerir instrumentación física del nadador ni una infraestructura de cámaras múltiples, ajustándose así a una restricción real y común en entornos universitarios: la disponibilidad de una sola cámara fija con cobertura parcial de la piscina.
+
+---
+
+## 8. Metodología de desarrollo y plan de trabajo
+
+### 8.1 Enfoque metodológico
 
 El desarrollo de Safe Splash 2 seguirá un enfoque de **prototipado iterativo**, en el cual la solución se construye mediante ciclos sucesivos de diseño, construcción, prueba y ajuste, en lugar de intentar entregar el sistema completo en una sola etapa. Esta elección responde a la naturaleza incierta de varios componentes del proyecto —en particular, la precisión alcanzable del detector y del tracker en condiciones reales de la piscina de la Universidad del Norte, que no puede conocerse con certeza antes de experimentar— por lo que resulta más apropiado avanzar validando supuestos técnicos en cada ciclo (p. ej. calidad de detección, estabilidad del tracking, viabilidad de la calibración) antes de comprometer decisiones de arquitectura definitivas para las etapas siguientes.
 
-### 7.2 Iteraciones o fases de desarrollo
+### 8.2 Iteraciones o fases de desarrollo
 
 - **Fase 0 — Investigación y preparación:** definición de requerimientos, medición y documentación física de la piscina (longitud de carril, marcas de fondo, banderas de vuelta), y revisión del estado del arte para fijar la línea base técnica.
 - **Fase 1 — Prototipo de detección:** construcción de un conjunto de datos propio de imágenes de nadadores en la piscina de la universidad, y ajuste (fine-tuning) de un modelo YOLO para la detección del nadador dentro de la zona observable.
@@ -154,7 +295,7 @@ El desarrollo de Safe Splash 2 seguirá un enfoque de **prototipado iterativo**,
 - **Fase 5 — Plataforma web:** desarrollo del backend y frontend, del módulo de autenticación con roles diferenciados (administrador, entrenador, nadador) y de la generación de reportes exportables (PDF/CSV).
 - **Fase 6 — Integración, pruebas de campo y ajuste final:** pruebas del sistema completo en la piscina semiolímpica, recolección de retroalimentación de entrenadores y nadadores, y ajustes finales antes de la entrega.
 
-### 7.3 Estrategia de validación
+### 8.3 Estrategia de validación
 
 La validación de cada iteración combinará varias estrategias complementarias:
 
@@ -164,7 +305,7 @@ La validación de cada iteración combinará varias estrategias complementarias:
 - **Retroalimentación cualitativa de usuarios:** sesiones breves con entrenadores y nadadores voluntarios al cierre de cada fase relevante, para evaluar la usabilidad de la plataforma web y la utilidad percibida de las métricas presentadas.
 - **Pruebas de robustez:** evaluación del comportamiento del sistema ante escenarios de oclusión, múltiples nadadores simultáneos y variaciones de iluminación, documentando explícitamente los casos en los que el sistema no logra un desempeño confiable.
 
-### 7.4 Plan de trabajo, cronograma o hitos
+### 8.4 Plan de trabajo, cronograma o hitos
 
 | Fase | Actividades principales | Entregable esperado | Duración estimada |
 |---|---|---|---|
@@ -180,7 +321,7 @@ La validación de cada iteración combinará varias estrategias complementarias:
 
 ---
 
-## 8. Referencias
+## 9. Referencias
 
 Bernardin, K., & Stiefelhagen, R. (2008). Evaluating multiple object tracking performance: the CLEAR MOT metrics. *EURASIP Journal on Image and Video Processing*.
 
