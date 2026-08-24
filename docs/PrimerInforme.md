@@ -38,7 +38,7 @@ Finalmente, desde una perspectiva académica, el proyecto permite estudiar la in
 
 El planteamiento de la solución asume las siguientes restricciones y supuestos:
 
-- **Cámara única y campo visual parcial:** el sistema dispone de una sola cámara fija instalada sobre los carriles 4 y 5, la cual no cubre los extremos completos de la piscina ni el resto de los carriles. En consecuencia, ciertos eventos (p. ej. el viraje contra la pared) deberán ser inferidos y no observados directamente.
+- **Cámara única (Axis Q1604), trípode y campo visual parcial:** el sistema dispone de una sola cámara fija instalada sobre los carriles 4 y 5, la cual no cubre los extremos completos de la piscina ni el resto de los carriles. En consecuencia, ciertos eventos (p. ej. el viraje contra la pared) deberán ser inferidos y no observados directamente.
 - **Calibración basada en medidas físicas predefinidas:** se asume que las medidas físicas de la piscina (longitud de carril, marcas de fondo, banderas de vuelta) son estables, conocidas de antemano y accesibles para realizar la calibración del sistema.
 - **Disponibilidad de la piscina y de usuarios de prueba:** el desarrollo y la validación dependen de la disponibilidad de horarios de acceso a la piscina semiolímpica y de la colaboración voluntaria de nadadores y entrenadores para las pruebas de campo.
 - **Ausencia de un dataset propio previo:** no existe, al inicio del proyecto, un conjunto de datos anotado de nadadores específico de esta piscina; su construcción (captura y etiquetado de imágenes) forma parte del trabajo a realizar y condiciona los tiempos de la fase de entrenamiento del modelo.
