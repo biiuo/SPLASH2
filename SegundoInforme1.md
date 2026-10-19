@@ -599,7 +599,7 @@ Estos valores son prácticamente idénticos a los obtenidos durante la validaci�
 
 **Figura 8 — Curvas de entrenamiento y validación por época.** La fila superior muestra las tres pérdidas de entrenamiento (`box_loss`, `obj_loss`, `cls_loss`) y las métricas de precision y recall; la fila inferior muestra las mismas pérdidas sobre el conjunto de validación, junto con el mAP@0.5 y el mAP@0.5:0.95. Las 50 épocas se completaron sin interrupciones. Lo que interesa observar acá es que las pérdidas de entrenamiento y de validación bajan de forma paralela durante todo el entrenamiento, sin que la curva de validación en ningún momento se despegue hacia arriba, que es la señal clásica de sobreajuste; esto confirma, de forma visual, lo que ya mostraba la tabla anterior. Precision, recall y mAP@0.5 se estabilizan rápido, alrededor de la época 10, y se mantienen prácticamente planos el resto del entrenamiento; el mAP@0.5:0.95, en cambio, sigue mejorando de forma sostenida hasta el final. En línea con esto, el checkpoint elegido como mejor (`best.pt`) correspondió a la **época 43 de 49**, con mAP@0.5 = 0.9165 y mAP@0.5:0.95 = 0.5682 en ese punto — confirmando que el modelo siguió mejorando de forma marginal prácticamente hasta el cierre del entrenamiento, sin indicios de que convenga haber entrenado por menos épocas.
 
-![Curvas de entrenamiento](./Captura de pantalla 2026-10-19 022110.png)
+![Curvas de entrenamiento](<./Captura de pantalla 2026-10-19 022110.png>)
 
 El procedimiento de entrenamiento y evaluación completo se documenta en el anexo técnico adjunto. Queda pendiente para la entrega final el cálculo del IoU promedio del detector (sección 11.4), que permitiría una comparación directa con el 81,51 % reportado por Chern et al. (2025).
 
