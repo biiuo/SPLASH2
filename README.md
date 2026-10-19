@@ -13,7 +13,7 @@ Presenta una síntesis del proyecto, incluyendo el contexto en el que surge, la 
 
 ### Segundo informe
 
-- [Segundo Informe.md](./docs/SegundoInforme.md): Documento que presenta el estado actual del proyecto, incluyendo los avances logrados, las validaciones realizadas y los aspectos pendientes.
+- [Segundo Informe.md](./SegundoInforme.md): Documento que presenta el estado actual del proyecto, incluyendo los avances logrados, las validaciones realizadas y los aspectos pendientes.
 
 
 ### Informe final
