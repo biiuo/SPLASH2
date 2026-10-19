@@ -9,7 +9,7 @@ Presenta una síntesis del proyecto, incluyendo el contexto en el que surge, la 
 
 ### Primer informe
 
-- [Primer Informe.md](./docs/PrimerInforme.md): Documento que presenta el planteamiento del problema, los objetivos, la solución propuesta, el estado del arte, la metodología de desarrollo y el plan de trabajo del proyecto.
+- [Primer Informe.md](./PrimerInforme.md): Documento que presenta el planteamiento del problema, los objetivos, la solución propuesta, el estado del arte, la metodología de desarrollo y el plan de trabajo del proyecto.
 
 ### Segundo informe
 
