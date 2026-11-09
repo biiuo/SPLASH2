@@ -1,0 +1,158 @@
+# SafeSplash: un contenedor por servicio.
+#
+#   docker compose up -d --build                       # frontend + backend + base de datos + relé + servidor de IA
+#   docker compose --profile phone up -d               # además el streaming WebSocket para el celular
+#   docker compose --profile demo up -d                # además una cámara simulada con ./videos/demo.mp4
+#
+# Antes: copiá .env.example como .env y completá los valores. Explicación de volúmenes en docs/Docker.md.
+
+name: safesplash
+
+services:
+  # ---------------------------------------------------------------- base de datos
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-safesplash}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definí POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-safesplash}
+    volumes:
+      - pgdata:/var/lib/postgresql/data            # volumen con nombre: los datos sobreviven a "down"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"   # solo para conectarte vos desde tu PC; borralo en producción
+    networks: [backend]
+
+  # ---------------------------------------------------------------- migraciones (Prisma)
+  # Crea o actualiza las tablas antes de que arranque el backend, y termina. Se vuelve a correr en cada "up".
+  migraciones:
+    build:
+      context: ./ServidorWEB/backend
+      target: migraciones
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Base externa (Supabase, Neon...): poner DATABASE_URL en .env. Si no, la del contenedor db.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-safesplash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-safesplash}}
+    restart: "no"
+    networks: [backend]
+
+  # ---------------------------------------------------------------- backend (NestJS)
+  backend:
+    build: ./ServidorWEB/backend
+    restart: unless-stopped
+    depends_on:
+      migraciones:
+        condition: service_completed_successfully
+    environment:
+      # Base externa (Supabase, Neon...): poner DATABASE_URL en .env. Si no, la del contenedor db.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-safesplash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-safesplash}}
+      PORT: "3001"
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Definí JWT_SECRET en .env (al menos 32 caracteres)}
+      IA_TOKEN: ${IA_TOKEN:?Definí IA_TOKEN en .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # servidor o celular: dónde se procesan las sesiones si en la web no se eligió (Configuración → Procesamiento)
+      PROCESAR_EN: ${PROCESAR_EN:-servidor}
+      SWAGGER: ${SWAGGER:-on}       # documentación en http://localhost:3001/docs (el puerto solo es visible desde esta máquina)
+    ports:
+      - "127.0.0.1:3001:3001"   # solo para probar la API a mano desde tu PC; el frontend entra por la red interna
+    networks: [backend]
+
+  # ---------------------------------------------------------------- frontend (Next.js)
+  frontend:
+    build: ./ServidorWEB/frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_URL: http://backend:3001   # el frontend reenvía /api/... al backend por la red interna
+    ports:
+      - "3000:3000"
+    networks: [backend]
+
+  # ---------------------------------------------------------------- relé RTSP de la cámara
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.3
+    restart: unless-stopped
+    environment:
+      # Con CAMERA_RTSP_URL lee la cámara Axis; vacío = espera que alguien publique (modo demo)
+      MTX_PATHS_CAM_SOURCE: ${CAMERA_RTSP_URL:-publisher}
+    ports:
+      - "8554:8554"   # RTSP (para el celular o VLC: rtsp://IP-DE-LA-PC:8554/cam, forzando TCP)
+    networks: [video]
+
+  # ---------------------------------------------------------------- servidor de IA (variante B)
+  ia:
+    build: ./ServidorIA/ProcesamientoServidor
+    restart: unless-stopped
+    depends_on: [mediamtx]
+    environment:
+      CAMERA_SOURCE: ${CAMERA_SOURCE:-rtsp://mediamtx:8554/cam}
+      SPLASH_WEIGHTS: /models/best.pt
+      ZONES_FILE: /config/zones.json
+      # Manda las posiciones a la sesión activa del backend (la inicia una persona desde la web). Vacío = solo procesa.
+      BACKEND_URL: ${IA_BACKEND_URL-http://backend:3001}
+      IA_TOKEN: ${IA_TOKEN:?Definí IA_TOKEN en .env}   # con este token el backend reconoce al servidor de IA
+      HZ_ENVIO: ${HZ_ENVIO:-3}
+      # Ajustes del tracker: si no están en el .env se usan los de ServidorIA/ProcesamientoServidor/entrypoint.sh
+      CONF: ${CONF:-0.10}
+      TRACK_THRESH: ${TRACK_THRESH:-0.30}
+      MATCH_THRESH: ${MATCH_THRESH:-0.9}
+      TRACK_BUFFER_S: ${TRACK_BUFFER_S:-4}
+      FPS_PROCESO: ${FPS_PROCESO:-10}
+      ASSO_FUNC: ${ASSO_FUNC:-diou}
+      CONTENIDAS: ${CONTENIDAS:-0.8}
+    volumes:
+      - ./ServidorIA/ProcesamientoServidor/modelo/best.pt:/models/best.pt:ro   # el modelo se monta, no se copia a la imagen: cambiarlo no pide reconstruir
+      - ./config:/config:ro                   # zones.json y calibración (solo lectura)
+      - torch_cache:/cache/torch              # caché de torch.hub: no vuelve a bajar YOLOv5 en cada arranque
+      - ia_data:/data                         # salidas del servidor de IA (detecciones grabadas, etc.)
+    networks: [backend, video]
+    # GPU NVIDIA (requiere nvidia-container-toolkit y otra imagen base):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+
+  # ---------------------------------------------------------------- streaming WebSocket (variante A, opcional)
+  stream-ws:
+    build: ./ServidorIA/ProcesamientoCelular
+    restart: unless-stopped
+    profiles: [phone]
+    depends_on: [mediamtx]
+    environment:
+      CAMARA_SOURCE: ${CAMERA_SOURCE:-rtsp://mediamtx:8554/cam}
+    ports:
+      - "8765:8765"
+    networks: [video]
+
+  # ---------------------------------------------------------------- cámara simulada (solo demo)
+  camara-simulada:
+    image: linuxserver/ffmpeg:latest
+    profiles: [demo]
+    depends_on: [mediamtx]
+    volumes:
+      - ./videos:/videos:ro   # carpeta de tu PC con el video de prueba, solo lectura
+    command: >
+      -re -stream_loop -1 -i /videos/${DEMO_VIDEO:-demo.mp4}
+      -c:v libx264 -preset ultrafast -tune zerolatency
+      -f rtsp -rtsp_transport tcp rtsp://mediamtx:8554/cam
+    networks: [video]
+
+networks:
+  backend:   # web, base de datos y servidor de IA
+  video:     # cámara, relé, servidor de IA y streaming
+
+volumes:
+  pgdata:        # datos de PostgreSQL (lo más importante: usuarios, sesiones, métricas)
+  torch_cache:   # YOLOv5 descargado por torch.hub (se puede borrar sin perder nada)
+  ia_data:       # salidas del servidor de IA

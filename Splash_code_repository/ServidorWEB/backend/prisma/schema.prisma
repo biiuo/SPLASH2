@@ -1,0 +1,219 @@
+// Esquema de la base de datos de SafeSplash (PostgreSQL).
+//
+// Las migraciones (prisma/migrations) son SQL. La primera trae además cosas que Prisma no sabe expresar en este
+// archivo: índices parciales (una sola sesión activa, una sola calibración activa), el índice por minúsculas del
+// correo, los CHECK (carril válido, fin >= inicio, t_fin > t_inicio...) y la vista resumen_sesion.
+// Por eso los cambios al esquema se hacen escribiendo una migración nueva, no con `prisma migrate dev`.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/infrastructure/persistence/generated/prisma"
+  // Nest compila a CommonJS: el cliente se genera en ese formato.
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RolUsuario {
+  administrador
+  entrenador
+  nadador
+
+  @@map("rol_usuario")
+}
+
+enum EstadoSesion {
+  activa
+  finalizada
+  cancelada
+
+  @@map("estado_sesion")
+}
+
+/// Dónde se procesa el video de una sesión. Es un dato interno: el usuario nunca lo ve.
+enum ModoProceso {
+  celular
+  servidor
+
+  @@map("modo_proceso")
+}
+
+enum TipoEvento {
+  cruce_nodo
+  viraje
+  inicio_descanso
+  fin_descanso
+
+  @@map("tipo_evento")
+}
+
+model Usuario {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String
+  nombre        String
+  password_hash String
+  rol           RolUsuario
+  activo        Boolean    @default(true)
+  creado_en     DateTime   @default(now()) @db.Timestamptz(6)
+
+  perfil_nadador      Nadador?        @relation("CuentaDelNadador")
+  nadadores_a_cargo   Nadador[]       @relation("EntrenadorDelNadador")
+  configuraciones     Configuracion[]
+  calibraciones       Calibracion[]
+  sesiones_entrenador Sesion[]
+
+  @@map("usuarios")
+}
+
+/// Un nadador puede existir antes de tener cuenta (usuario_id vacío).
+model Nadador {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id    String?  @unique @db.Uuid
+  entrenador_id String?  @db.Uuid
+  nombre        String
+  creado_en     DateTime @default(now()) @db.Timestamptz(6)
+
+  usuario    Usuario?          @relation("CuentaDelNadador", fields: [usuario_id], references: [id], onDelete: Cascade)
+  entrenador Usuario?          @relation("EntrenadorDelNadador", fields: [entrenador_id], references: [id], onDelete: SetNull)
+  sesiones   SesionNadador[]
+
+  @@index([entrenador_id], map: "nadadores_entrenador_idx")
+  @@map("nadadores")
+}
+
+/// Datos de la piscina y de la cámara que usa la calibración. Siempre hay una sola fila (id = true).
+model Configuracion {
+  id              Boolean  @id @default(true)
+  piscina         Json
+  camara          Json
+  /// Dónde se procesan las sesiones nuevas: { "modo": "servidor" | "celular" | null }. null = PROCESAR_EN del .env
+  procesamiento   Json     @default("{}")
+  actualizada_por String?  @db.Uuid
+  actualizada_en  DateTime @default(now()) @db.Timestamptz(6)
+
+  autor Usuario? @relation(fields: [actualizada_por], references: [id], onDelete: SetNull)
+
+  @@map("configuracion")
+}
+
+/// Una posición de la cámara: la homografía (píxeles -> metros) y las zonas de análisis dibujadas sobre la misma imagen.
+model Calibracion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Para reconocerla en el historial ("Tribuna, lado norte").
+  nombre       String?
+  creada_por   String?  @db.Uuid
+  image_width  Int
+  image_height Int
+  /// [{ id, px: [x, y], mundo: [x, y] }]
+  puntos       Json
+  /// [{ cuerda, px: [x, y], y_m }]: puntos sobre las corcheras, en cualquier lugar de su largo.
+  cuerdas      Json     @default("[]")
+  /// Matriz 3x3, píxeles (corregidos por la curvatura del lente, si hay) -> metros.
+  homografia   Json
+  /// { k1, centro: [x, y], escala }: curvatura del lente. null = no se corrige.
+  distorsion   Json?
+  /// Medidas de la piscina con las que se calculó.
+  geometria    Json
+  /// [{ name, polygon: [[x, y], ...] }] en píxeles de la misma imagen (formato de zones.json). Los carriles se llaman lane<N>.
+  zonas        Json?
+  /// { inicio_m, fin_m }: dónde se cuenta la llegada a cada pared si la cámara no la ve. null = en la pared.
+  llegada      Json?
+  /// La imagen (JPEG) sobre la que se calibró: la usan las zonas y el editor para no tener que volver a subirla.
+  imagen       Bytes?
+  rmse_m       Decimal? @db.Decimal(8, 4)
+  cruzado_m    Decimal? @db.Decimal(8, 4)
+  completa     Boolean  @default(false)
+  activa       Boolean  @default(false)
+  creado_en    DateTime @default(now()) @db.Timestamptz(6)
+
+  autor    Usuario? @relation(fields: [creada_por], references: [id], onDelete: SetNull)
+  sesiones Sesion[]
+
+  @@map("calibraciones")
+}
+
+model Sesion {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entrenador_id  String?      @db.Uuid
+  calibracion_id String?      @db.Uuid
+  estado         EstadoSesion @default(activa)
+  modo           ModoProceso
+  inicio         DateTime     @default(now()) @db.Timestamptz(6)
+  fin            DateTime?    @db.Timestamptz(6)
+
+  entrenador  Usuario?        @relation(fields: [entrenador_id], references: [id], onDelete: SetNull)
+  calibracion Calibracion?    @relation(fields: [calibracion_id], references: [id], onDelete: SetNull)
+  nadadores   SesionNadador[]
+  eventos     Evento[]
+  tramos      Tramo[]
+
+  @@map("sesiones")
+}
+
+/// Qué nadador está en cada carril durante la sesión (puede ser anónimo).
+model SesionNadador {
+  sesion_id  String  @db.Uuid
+  carril     Int     @db.SmallInt
+  nadador_id String? @db.Uuid
+  /// El carril está tomado por la sesión mientras está en curso. Índices únicos parciales (en la migración): un carril y
+  /// un nadador en una sola sesión activa a la vez.
+  activo     Boolean @default(false)
+
+  sesion  Sesion   @relation(fields: [sesion_id], references: [id], onDelete: Cascade)
+  nadador Nadador? @relation(fields: [nadador_id], references: [id], onDelete: SetNull)
+
+  @@id([sesion_id, carril])
+  @@map("sesion_nadadores")
+}
+
+/// El id lo genera quien mide (celular o servidor de IA): si reenvía el mismo evento, no se duplica.
+model Evento {
+  id          String     @id @db.Uuid
+  sesion_id   String     @db.Uuid
+  carril      Int        @db.SmallInt
+  /// Identidad estable del tracker (no es un usuario).
+  identidad   Int?
+  tipo        TipoEvento
+  nodo_m      Decimal?   @db.Decimal(6, 2)
+  /// Instante en que se capturó el frame.
+  ts_captura  DateTime   @db.Timestamptz(6)
+  /// false = inferido (fuera de lo que ve la cámara).
+  observado   Boolean    @default(true)
+  recibido_en DateTime   @default(now()) @db.Timestamptz(6)
+
+  sesion Sesion @relation(fields: [sesion_id], references: [id], onDelete: Cascade)
+
+  @@index([sesion_id, ts_captura], map: "eventos_sesion_ts_idx")
+  @@map("eventos")
+}
+
+model Tramo {
+  id           String   @id @db.Uuid
+  sesion_id    String   @db.Uuid
+  carril       Int      @db.SmallInt
+  identidad    Int?
+  nodo_desde_m Decimal  @db.Decimal(6, 2)
+  nodo_hasta_m Decimal  @db.Decimal(6, 2)
+  t_inicio     DateTime @db.Timestamptz(6)
+  t_fin        DateTime @db.Timestamptz(6)
+  distancia_m  Decimal  @db.Decimal(7, 2)
+  velocidad_ms Decimal  @db.Decimal(7, 3)
+  observado    Boolean  @default(true)
+  recibido_en  DateTime @default(now()) @db.Timestamptz(6)
+
+  sesion Sesion @relation(fields: [sesion_id], references: [id], onDelete: Cascade)
+
+  @@index([sesion_id, t_inicio], map: "tramos_sesion_idx")
+  @@map("tramos")
+}
+
+/// Cada componente (servidor de IA, celulares) avisa que está vivo; sirve para elegir dónde procesar.
+model Latido {
+  componente    String   @id
+  estado        Json     @default("{}")
+  ultimo_latido DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("latidos")
+}

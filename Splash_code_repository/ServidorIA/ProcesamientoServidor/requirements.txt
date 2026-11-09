@@ -1,0 +1,22 @@
+# Versiones probadas con Python 3.11. El código usa ByteTrackConfig y asso_func="diou", que solo existen en boxmot >= 26
+# (con boxmot 12 falla el import). boxmot 26 trae numpy 2, y torch tiene que ser >= 2.3 para funcionar con numpy 2.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.15.0
+torchvision==0.29.2
+numpy==2.4.6
+boxmot==26.0.0
+
+# Las pide YOLOv5 cuando torch.hub descarga su código
+ultralytics
+ultralytics-thop
+pandas
+matplotlib
+seaborn
+scipy
+pillow
+psutil
+PyYAML
+requests
+tqdm
+packaging

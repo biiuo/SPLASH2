@@ -1,0 +1,68 @@
+# .gitignore de la raíz del repositorio (proyecto_final/). El código está en Splash_code_repository/.
+# Las reglas sin "/" en el medio valen para cualquier carpeta; las que tienen una ruta, desde esta raíz.
+
+# Datos y modelos pesados
+Splash_code_repository/ServidorIA/ProcesamientoServidor/modelo/datos/
+*.zip
+*.mp4
+*.avi
+*.mov
+*.onnx
+*.tflite
+
+# Secretos y certificados (mkcert, claves, variables de entorno)
+*.pem
+*.key
+.env
+.env.*
+# las plantillas de variables sí se versionan
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+runs/
+
+# Node / web
+node_modules/
+.next/
+# salida de compilación
+dist/
+
+# Android
+**/app-android/build/
+**/app-android/.gradle/
+*.apk
+local.properties
+
+# Herramientas externas descargadas
+mediamtx*
+*.exe
+
+# Editor / local
+**/.claude/settings.local.json
+.vscode/
+.idea/
+*.log
+
+# Datasets de entrenamiento/test (cientos de MB; se guardan en Drive/Roboflow)
+*.yolov5-obb/
+
+# Detecciones grabadas y resultados de barridos (se regeneran)
+*.npz
+resultados*.csv
+
+# Generados por herramientas
+next-env.d.ts
+*.tsbuildinfo
+*.code-workspace
+
+# Cliente de Prisma generado (se regenera con "npm run db:generar")
+Splash_code_repository/ServidorWEB/backend/src/infrastructure/persistence/generated/
+
+# Instaladas por "prisma init" (asistentes de IA); no son parte del proyecto
+.agents/
+.windsurf/
+skills-lock.json
