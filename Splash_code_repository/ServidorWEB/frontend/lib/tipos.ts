@@ -195,8 +195,13 @@ export type Sesion = {
   estado: 'activa' | 'finalizada' | 'cancelada'
   modo: ModoProceso
   calibracion_id: string | null
-  /** Quién la inició: un entrenador (su grupo) o un nadador (su sesión libre). */
+  /** Quién la inició: un entrenador (o administrador) o un nadador (su sesión personal). */
   iniciada_por_id: string | null
+  iniciada_por: string | null
+  iniciada_por_rol: Rol | null
+  /** Sesión de un entrenador: de un grupo, o libre (null: cualquier nadador se puede sumar). */
+  grupo_id: string | null
+  grupo: string | null
   carriles: AsignacionCarril[]
   inicio: string
   fin: string | null
@@ -211,10 +216,19 @@ export type EstadoCarril = {
   nadador: string | null
 }
 
-export type EstadoCarriles = { carriles: EstadoCarril[]; sesion_de_mi_entrenador: string | null }
+/** Una sesión de un entrenador a la que me puedo sumar (de uno de mis grupos, o libre). */
+export type SesionDisponible = { id: string; entrenador: string | null; grupo: string | null }
 
-/** Un nadador del grupo de un entrenador. */
-export type NadadorDelGrupo = { id: string; usuario_id: string | null; entrenador_id: string | null; nombre: string; email: string | null }
+export type EstadoCarriles = { carriles: EstadoCarril[]; sesiones_disponibles: SesionDisponible[] }
+
+/** Un nadador (perfil de una cuenta de nadador). */
+export type Nadador = { id: string; usuario_id: string | null; nombre: string; email: string | null }
+
+/** Un grupo de un entrenador, con sus nadadores. Un entrenador puede tener varios. */
+export type Grupo = { id: string; entrenador_id: string; entrenador: string; nombre: string; nadadores: Nadador[] }
+
+/** Un nadador de la lista de todos, con los ids de MIS grupos en los que ya está. */
+export type NadadorDeLaLista = Nadador & { mis_grupos: string[] }
 
 export type EventoGuardado = {
   id: string
@@ -244,7 +258,6 @@ export type ResultadosSesion = { eventos: EventoGuardado[]; tramos: TramoGuardad
 
 /** Una sesión del historial, con el resumen de lo medido (GET /api/sesiones). */
 export type ResumenSesion = Omit<Sesion, 'carriles'> & {
-  iniciada_por: string | null
   carriles: number[]
   tramos: number
   distancia_m: number

@@ -152,18 +152,20 @@ function DashboardShell({ children, usuario, onHome, onSalir }: { children: Reac
 }
 
 /**
- * Nadador: solo lo suyo. Su sesión libre (la que inicia él, distinta de la del entrenador) y las sesiones en las que su
- * entrenador lo asignó. Si no está en ningún grupo y no inició ninguna, no ve nada de nadie.
+ * Nadador: solo lo suyo. Sus sesiones personales y las sesiones de entrenadores en las que tiene un carril (de uno de
+ * sus grupos, o libres). En cada una ve solo su carril.
  */
 function UserDashboard() {
-  const [entrenador, setEntrenador] = useState<{ nombre: string } | null | undefined>(undefined)
+  const [grupos, setGrupos] = useState<{ id: string; nombre: string; entrenador: string }[] | undefined>(undefined)
   useEffect(() => {
-    api.miEntrenador().then(setEntrenador).catch(() => setEntrenador(null))
+    api.misGruposComoNadador().then(setGrupos).catch(() => setGrupos([]))
   }, [])
   return <div className="mx-auto max-w-6xl">
     <div className="mb-8"><p className="text-sm font-semibold text-blue-600">Tu resumen</p><h2 className="mt-1 text-3xl font-semibold tracking-tight">Tu progreso en el agua</h2>
-      <p className="mt-2 text-sm text-slate-500">{entrenador === undefined ? '' : entrenador ? `Tu entrenador: ${entrenador.nombre}` : 'Todavía no estás en el grupo de ningún entrenador.'}</p></div>
-    <SesionPanel titulo="Tu sesión" vacia="No tenés una sesión en curso. Elegí un carril libre: podés sumarte a la sesión de tu entrenador o empezar una sesión libre." />
+      <p className="mt-2 text-sm text-slate-500">
+        {grupos === undefined ? '' : grupos.length ? `Tus grupos: ${grupos.map((g) => `${g.nombre} (${g.entrenador})`).join(' · ')}` : 'Todavía no estás en ningún grupo. Igual podés sumarte a las sesiones libres de un entrenador.'}
+      </p></div>
+    <SesionPanel titulo="Tu sesión" vacia="No tenés una sesión en curso. Elegí un carril: podés sumarte a la sesión de un entrenador (de tu grupo, o libre) o empezar una sesión personal." />
     <HistorialSesiones />
   </div>
 }

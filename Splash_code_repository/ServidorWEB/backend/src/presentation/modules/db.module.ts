@@ -4,9 +4,9 @@ import { CALIBRACION_REPOSITORY } from '../../domain/repositories/calibracion.re
 import { CONFIGURACION_REPOSITORY } from '../../domain/repositories/configuracion.repository'
 import { RESULTADOS_REPOSITORY } from '../../domain/repositories/resultados.repository'
 import { SESION_REPOSITORY } from '../../domain/repositories/sesion.repository'
-import { NADADOR_REPOSITORY } from '../../domain/repositories/nadador.repository'
+import { GRUPO_REPOSITORY, NADADOR_REPOSITORY } from '../../domain/repositories/nadador.repository'
 import { USUARIO_REPOSITORY } from '../../domain/repositories/usuario.repository'
-import { PrismaNadadorRepository } from '../../infrastructure/repositories/prisma-nadador.repository'
+import { PrismaGrupoRepository, PrismaNadadorRepository } from '../../infrastructure/repositories/prisma-nadador.repository'
 import { PrismaUsuarioRepository } from '../../infrastructure/repositories/prisma-usuario.repository'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { PrismaCalibracionRepository } from '../../infrastructure/repositories/prisma-calibracion.repository'
@@ -25,7 +25,8 @@ import { PrismaSesionRepository } from '../../infrastructure/repositories/prisma
     { provide: RESULTADOS_REPOSITORY, useClass: PrismaResultadosRepository },
     { provide: USUARIO_REPOSITORY, useClass: PrismaUsuarioRepository },
     { provide: NADADOR_REPOSITORY, useClass: PrismaNadadorRepository },
+    { provide: GRUPO_REPOSITORY, useClass: PrismaGrupoRepository },
   ],
-  exports: [PrismaService, CONFIGURACION_REPOSITORY, CALIBRACION_REPOSITORY, SESION_REPOSITORY, RESULTADOS_REPOSITORY, USUARIO_REPOSITORY, NADADOR_REPOSITORY],
+  exports: [PrismaService, CONFIGURACION_REPOSITORY, CALIBRACION_REPOSITORY, SESION_REPOSITORY, RESULTADOS_REPOSITORY, USUARIO_REPOSITORY, NADADOR_REPOSITORY, GRUPO_REPOSITORY],
 })
 export class DbModule {}

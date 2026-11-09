@@ -13,10 +13,14 @@ const visiblesPara = (usuarioId: string): Prisma.SesionWhereInput => ({
 /** Lo que se trae junto con cada sesión: sus carriles y el nadador de cada uno. */
 const CON_CARRILES = {
   nadadores: { orderBy: { carril: 'asc' }, include: { nadador: { select: { nombre: true, usuario_id: true } } } },
+  entrenador: { select: { nombre: true, rol: true } },
+  grupo: { select: { nombre: true } },
 } as const satisfies Prisma.SesionInclude
 
 type FilaConCarriles = FilaSesion & {
   nadadores: { carril: number; nadador_id: string | null; nadador: { nombre: string; usuario_id: string | null } | null }[]
+  entrenador: { nombre: string; rol: 'administrador' | 'entrenador' | 'nadador' } | null
+  grupo: { nombre: string } | null
 }
 
 const aDominio = (f: FilaConCarriles): Sesion => ({
@@ -25,6 +29,10 @@ const aDominio = (f: FilaConCarriles): Sesion => ({
   modo: f.modo,
   calibracion_id: f.calibracion_id,
   iniciada_por_id: f.entrenador_id,
+  iniciada_por: f.entrenador?.nombre ?? null,
+  iniciada_por_rol: f.entrenador?.rol ?? null,
+  grupo_id: f.grupo_id,
+  grupo: f.grupo?.nombre ?? null,
   carriles: f.nadadores.map((n) => ({
     carril: n.carril,
     nadador_id: n.nadador_id,
@@ -52,6 +60,7 @@ export class PrismaSesionRepository implements SesionRepository {
           modo: datos.modo,
           calibracion_id: datos.calibracionId,
           entrenador_id: datos.usuarioId,
+          grupo_id: datos.grupoId,
           nadadores: { create: datos.carriles.map((c) => ({ carril: c.carril, nadador_id: c.nadadorId, activo: true })) },
         },
         include: CON_CARRILES,
@@ -120,7 +129,8 @@ export class PrismaSesionRepository implements SesionRepository {
       orderBy: { inicio: 'desc' },
       take: limite,
       include: {
-        entrenador: { select: { nombre: true } },
+        entrenador: { select: { nombre: true, rol: true } },
+        grupo: { select: { nombre: true } },
         nadadores: { select: { carril: true, nadador: { select: { usuario_id: true } } } },
       },
     })
@@ -155,7 +165,6 @@ export class PrismaSesionRepository implements SesionRepository {
       const { carriles: _carriles, ...base } = aDominio({ ...f, nadadores: [] })
       return {
         ...base,
-        iniciada_por: f.entrenador?.nombre ?? null,
         carriles: r ? [...r.carriles].sort((a, b) => a - b) : [],
         tramos: r?.tramos ?? 0,
         distancia_m: r ? Math.round(r.metros * 100) / 100 : 0,

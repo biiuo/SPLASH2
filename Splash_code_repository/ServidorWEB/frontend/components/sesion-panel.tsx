@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, Play, Square, UserPlus } from 'lucide-react'
+import { Activity, Lock, Play, Square, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ProcesadorCelularPanel } from '@/components/procesador-celular'
@@ -8,13 +8,13 @@ import { ErrorApi, api } from '@/lib/api'
 import { useCuenta } from '@/lib/cuenta'
 import { decidirModo, marcarQueProcesoAqui } from '@/lib/modo'
 import { formatearDuracion, formatearVelocidad, resumenPorCarril } from '@/lib/resultados'
-import type { EstadoCarril, EstadoCarriles, NadadorDelGrupo, ResultadosSesion, Sesion } from '@/lib/tipos'
+import type { EstadoCarril, EstadoCarriles, Grupo, Nadador, ResultadosSesion, Sesion } from '@/lib/tipos'
 
 /** Avisos en vivo del backend (SSE). Si no se puede usar, se vuelve a preguntar cada CADA_MS. */
 const AVISOS = '/api/sesiones/eventos'
 const CADA_MS = 2000
 
-/** Lo que el entrenador eligió para cada carril libre: no usarlo, reservarlo sin nadador, o un nadador de su grupo. */
+/** Lo que el entrenador eligió para cada carril libre: no usarlo, reservarlo sin nadador, o un nadador. */
 type Eleccion = 'no' | 'reservar' | string
 
 /** Agrega lo nuevo sin repetir: si la IA reenvió un lote, llegan ids que ya estaban. */
@@ -36,8 +36,10 @@ const ESTILO_CARRIL: Record<EstadoCarril['estado'], string> = {
 
 /**
  * La sesión de quien mira. Puede haber varias sesiones a la vez, cada una en sus carriles:
- *   * el entrenador elige los carriles y, en cada uno, un nadador de su grupo o ninguno (reservado para quien llegue);
- *   * el nadador puede sumarse a la sesión de su entrenador o empezar su sesión libre, en un carril que esté libre.
+ *   * el entrenador elige si la sesión es de uno de sus grupos o libre (abierta a cualquier nadador), los carriles y,
+ *     en cada uno, un nadador (del grupo, o cualquiera si es libre) o ninguno (reservado para quien llegue después);
+ *   * el nadador puede sumarse a una sesión de un entrenador (de uno de sus grupos, o libre) o empezar su sesión
+ *     personal, en un carril que esté libre.
  * El modo de procesamiento no se muestra: lo decide `decidirModo()`.
  */
 export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No hay una sesión en curso.' }: { titulo?: string; vacia?: string } = {}) {
@@ -46,7 +48,10 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
   const [sesion, setSesion] = useState<Sesion | null>(null)
   const [resultados, setResultados] = useState<ResultadosSesion | null>(null)
   const [estado, setEstado] = useState<EstadoCarriles | null>(null)
-  const [grupo, setGrupo] = useState<NadadorDelGrupo[]>([])
+  const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [todos, setTodos] = useState<Nadador[]>([])
+  /** De qué grupo es la sesión que va a iniciar el entrenador ('' = libre: cualquier nadador). */
+  const [grupoSesion, setGrupoSesion] = useState('')
   const [eleccion, setEleccion] = useState<Record<number, Eleccion>>({})
   const [carrilElegido, setCarrilElegido] = useState<number | null>(null)
   const [cargado, setCargado] = useState(false)
@@ -70,10 +75,11 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
     }
   }, [])
 
-  // el grupo del entrenador, para elegir quién va en cada carril
+  // los grupos del entrenador y todos los nadadores, para elegir quién va en cada carril
   useEffect(() => {
     if (!usuario || esNadador) return
-    api.grupo().then(setGrupo).catch(() => setGrupo([]))
+    api.grupos().then(setGrupos).catch(() => setGrupos([]))
+    api.todosLosNadadores().then(setTodos).catch(() => setTodos([]))
   }, [usuario, esNadador])
 
   // Lo medido llega por avisos (SSE) apenas el backend lo guarda. "carriles" avisa que alguien tomó o soltó carriles.
@@ -113,7 +119,9 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
   }, [sesion])
 
   const carriles = estado?.carriles ?? []
-  const sesionEntrenador = estado?.sesion_de_mi_entrenador ?? null
+  const disponibles = estado?.sesiones_disponibles ?? []
+  // quiénes se pueden poner en un carril: los del grupo elegido, o todos si la sesión es libre
+  const candidatos = grupoSesion ? (grupos.find((g) => g.id === grupoSesion)?.nadadores ?? []) : todos
   const elegidos = useMemo(
     () => Object.entries(eleccion).filter(([, v]) => v !== 'no').map(([c, v]) => ({ carril: Number(c), nadador_id: v === 'reservar' ? null : v })),
     [eleccion],
@@ -137,16 +145,16 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
   const iniciar = (lista: { carril: number; nadador_id?: string | null }[]) =>
     correr(async () => {
       const { modo_procesamiento } = await api.configuracion()
-      const nueva = await api.iniciarSesion(decidirModo(modo_procesamiento), lista)
+      const nueva = await api.iniciarSesion(decidirModo(modo_procesamiento), lista, grupoSesion || null)
       // en modo celular, procesa el dispositivo que inicia la sesión
       marcarQueProcesoAqui(nueva.modo === 'celular' ? nueva.id : null)
       setEleccion({})
       setCarrilElegido(null)
     }, 'No se pudo iniciar la sesión.')
 
-  const unirse = (carril: number) =>
+  const unirse = (sesionId: string, carril: number) =>
     correr(async () => {
-      await api.unirseASesion(sesionEntrenador!, carril)
+      await api.unirseASesion(sesionId, carril)
       setCarrilElegido(null)
     }, 'No se pudo sumarte a la sesión.')
 
@@ -162,8 +170,17 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
   // un nadador ve solo su carril; quien inició la sesión, todos
   const misCarriles = sesion ? sesion.carriles.filter((c) => esMia || c.usuario_id === usuario?.id) : []
   const carrilSel = carriles.find((c) => c.carril === carrilElegido) ?? null
-  const puedeUnirse = !!sesionEntrenador && !!carrilSel && (carrilSel.estado === 'libre' || (carrilSel.estado === 'grupo' && !carrilSel.con_nadador))
+  // a qué sesiones me puedo sumar con el carril elegido: la dueña del carril, o (si el carril está libre) cualquiera disponible
+  const paraSumarme = !carrilSel
+    ? []
+    : carrilSel.estado === 'grupo' && !carrilSel.con_nadador
+      ? disponibles.filter((d) => d.id === carrilSel.sesion_id)
+      : carrilSel.estado === 'libre'
+        ? disponibles
+        : []
   const puedeLibre = !!carrilSel && carrilSel.estado === 'libre'
+  const nombreSesion = (d: { entrenador: string | null; grupo: string | null }) => `${d.entrenador ?? 'entrenador'} · ${d.grupo ?? 'sesión libre'}`
+  const tipoDeMiSesion = (x: Sesion) => (x.iniciada_por_rol === 'nadador' ? 'sesión personal (solo vos la ves)' : (x.grupo ?? 'sesión libre'))
 
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="titulo-sesion">
@@ -178,7 +195,7 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
               {!cargado
                 ? 'Consultando…'
                 : sesion
-                  ? `${esMia ? 'En curso' : 'En la sesión de tu entrenador'} · ${formatearDuracion(ahora - Date.parse(sesion.inicio))}`
+                  ? `${esMia ? `En curso · ${tipoDeMiSesion(sesion)}` : `En la sesión de ${nombreSesion({ entrenador: sesion.iniciada_por, grupo: sesion.grupo })}`} · ${formatearDuracion(ahora - Date.parse(sesion.inicio))}`
                   : vacia}
             </p>
           </div>
@@ -209,8 +226,29 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
       {/* ---- sin sesión: elegir carriles ---- */}
       {cargado && !sesion && carriles.length > 0 && (
         <div className="mt-5">
+          {!esNadador && (
+            <label className="mb-4 block text-sm font-medium text-slate-700">
+              La sesión es de
+              <select
+                value={grupoSesion}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setGrupoSesion(v)
+                  setEleccion({})
+                }}
+                className="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm sm:w-96"
+              >
+                <option value="">Sesión libre (cualquier nadador puede sumarse)</option>
+                {grupos.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    Grupo {g.nombre} ({g.nadadores.length})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <p className="text-sm font-medium text-slate-700">
-            {esNadador ? 'Elegí un carril' : 'Elegí los carriles de la sesión y quién va en cada uno'}
+            {esNadador ? 'Elegí un carril' : 'Elegí los carriles y quién va en cada uno'}
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             {carriles.map((c) => (
@@ -220,7 +258,7 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
                   <span className="text-xs font-semibold text-slate-500">
                     {c.estado === 'libre' && 'Libre'}
                     {c.estado === 'ocupado' && 'En uso'}
-                    {c.estado === 'grupo' && (c.con_nadador ? 'Tu grupo · ocupado' : 'Tu grupo · libre')}
+                    {c.estado === 'grupo' && (c.con_nadador ? 'Sesión de entrenador · ocupado' : 'Sesión de entrenador · libre')}
                     {c.estado === 'mio' && 'Tuyo'}
                   </span>
                 </div>
@@ -236,7 +274,7 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
                   >
                     <option value="no">No usar</option>
                     <option value="reservar">Reservar (sin nadador)</option>
-                    {grupo.map((n) => (
+                    {candidatos.map((n) => (
                       <option key={n.id} value={n.id} disabled={enUso.has(n.id) && eleccion[c.carril] !== n.id}>
                         {n.nombre}
                       </option>
@@ -265,27 +303,57 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
                 <Play className="size-4 fill-current" /> Iniciar sesión{elegidos.length ? ` (${elegidos.length} ${elegidos.length === 1 ? 'carril' : 'carriles'})` : ''}
               </button>
             )}
-            {esNadador && sesionEntrenador && (
-              <button
-                onClick={() => unirse(carrilElegido!)}
-                disabled={ocupado || !puedeUnirse}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:opacity-50"
-              >
-                <UserPlus className="size-4" /> Sumarme a la sesión de mi entrenador
-              </button>
-            )}
-            {esNadador && (
-              <button
-                onClick={() => iniciar([{ carril: carrilElegido! }])}
-                disabled={ocupado || !puedeLibre}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-              >
-                <Play className="size-4" /> Empezar mi sesión libre
-              </button>
-            )}
           </div>
-          {esNadador && carrilSel?.estado === 'grupo' && (
-            <p className="mt-2 text-xs text-slate-500">Ese carril es de la sesión de tu entrenador: solo podés sumarte a ella.</p>
+
+          {/* el nadador elige: entrenar con su entrenador, o en su espacio personal (que el entrenador no ve) */}
+          {esNadador && !carrilSel && <p className="text-sm text-slate-500">Elegí un carril y después cómo querés entrenar.</p>}
+          {esNadador && carrilSel && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className={`rounded-xl border p-4 ${paraSumarme.length ? 'border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-slate-50 opacity-70'}`}>
+                <p className="flex items-center gap-2 font-semibold text-slate-800">
+                  <UserPlus className="size-4 text-blue-600" /> Con mi entrenador
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Te sumás a su sesión. Tu entrenador ve tus tiempos y tus métricas; los demás nadadores no.
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  {paraSumarme.map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => unirse(d.id, carrilElegido!)}
+                      disabled={ocupado}
+                      className="rounded-lg bg-blue-600 px-4 py-2.5 text-left text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Sumarme a {nombreSesion(d)}
+                    </button>
+                  ))}
+                  {paraSumarme.length === 0 && (
+                    <p className="text-xs text-slate-500">
+                      {disponibles.length === 0
+                        ? 'Ningún entrenador tiene ahora una sesión a la que te puedas sumar.'
+                        : 'Ese carril está en otra sesión: elegí un carril libre o uno reservado de la sesión de tu entrenador.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className={`rounded-xl border p-4 ${puedeLibre ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50 opacity-70'}`}>
+                <p className="flex items-center gap-2 font-semibold text-slate-800">
+                  <Lock className="size-4 text-emerald-600" /> En mi espacio personal
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Una sesión solo tuya. <strong>Tu entrenador no tiene acceso</strong>: no la ve, ni ve sus resultados.
+                </p>
+                <button
+                  onClick={() => iniciar([{ carril: carrilElegido! }])}
+                  disabled={ocupado || !puedeLibre}
+                  className="mt-3 w-full rounded-lg border border-emerald-300 bg-white px-4 py-2.5 text-left text-sm font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                >
+                  Empezar mi sesión personal
+                </button>
+                {!puedeLibre && <p className="mt-2 text-xs text-slate-500">Solo en un carril libre.</p>}
+              </div>
+            </div>
           )}
         </div>
       )}

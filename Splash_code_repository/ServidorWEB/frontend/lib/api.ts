@@ -12,7 +12,8 @@ import type {
   Marca,
   MarcaCuerda,
   ModoProceso,
-  NadadorDelGrupo,
+  Grupo,
+  NadadorDeLaLista,
   PuntosReferencia,
   ResultadoEvaluacion,
   ResultadosSesion,
@@ -116,16 +117,28 @@ export const api = {
   sesionActiva: () => pedir<Sesion | null>('sesiones/activa'),
   /** Historial: las últimas sesiones con su resumen (entrenador y administrador). */
   sesionesRecientes: (limite = 20) => pedir<ResumenSesion[]>(`sesiones?limite=${limite}`),
-  /** Entrenador: uno o más carriles, con un nadador de su grupo o sin nadador. Nadador: un carril (su sesión libre). */
-  iniciarSesion: (modo: ModoProceso, carriles: { carril: number; nadador_id?: string | null }[]) =>
-    pedir<Sesion>('sesiones', 'POST', { modo, carriles }),
-  /** Un nadador se suma a la sesión en curso de su entrenador, en ese carril. */
+  /**
+   * Entrenador: uno o más carriles, con un nadador o sin nadador; la sesión es de un grupo (grupoId) o libre (null).
+   * Nadador: un carril (su sesión personal).
+   */
+  iniciarSesion: (modo: ModoProceso, carriles: { carril: number; nadador_id?: string | null }[], grupoId: string | null = null) =>
+    pedir<Sesion>('sesiones', 'POST', { modo, carriles, grupo_id: grupoId }),
+  /** Un nadador se suma a una sesión en curso de un entrenador (de uno de sus grupos, o libre), en ese carril. */
   unirseASesion: (id: string, carril: number) => pedir<Sesion>(`sesiones/${encodeURIComponent(id)}/unirse`, 'POST', { carril }),
   estadoCarriles: () => pedir<EstadoCarriles>('sesiones/carriles'),
-  grupo: () => pedir<NadadorDelGrupo[]>('grupo'),
-  agregarAlGrupo: (email: string) => pedir<NadadorDelGrupo>('grupo', 'POST', { email }),
-  quitarDelGrupo: (id: string) => pedir<null>(`grupo/${encodeURIComponent(id)}`, 'DELETE'),
-  miEntrenador: () => pedir<{ id: string; nombre: string } | null>('grupo/mi-entrenador'),
+  // ---- grupos (un entrenador puede tener varios) ----
+  grupos: () => pedir<Grupo[]>('grupos'),
+  crearGrupo: (nombre: string) => pedir<Grupo>('grupos', 'POST', { nombre }),
+  renombrarGrupo: (id: string, nombre: string) => pedir<Grupo>(`grupos/${encodeURIComponent(id)}`, 'PATCH', { nombre }),
+  borrarGrupo: (id: string) => pedir<null>(`grupos/${encodeURIComponent(id)}`, 'DELETE'),
+  agregarAGrupo: (grupoId: string, nadadorId: string) =>
+    pedir<Grupo>(`grupos/${encodeURIComponent(grupoId)}/nadadores`, 'POST', { nadador_id: nadadorId }),
+  quitarDeGrupo: (grupoId: string, nadadorId: string) =>
+    pedir<Grupo>(`grupos/${encodeURIComponent(grupoId)}/nadadores/${encodeURIComponent(nadadorId)}`, 'DELETE'),
+  /** Todos los nadadores registrados (entrenador y administrador). */
+  todosLosNadadores: () => pedir<NadadorDeLaLista[]>('grupos/nadadores'),
+  /** Para un nadador: los grupos en los que está, con su entrenador. */
+  misGruposComoNadador: () => pedir<{ id: string; nombre: string; entrenador: string }[]>('grupos/mios'),
   finalizarSesion: (id: string) => pedir<Sesion>(`sesiones/${encodeURIComponent(id)}/finalizar`, 'POST'),
   resultadosSesion: (id: string) => pedir<ResultadosSesion>(`sesiones/${encodeURIComponent(id)}/resultados`),
   /** Lo que manda quien mide (aquí, el celular): posiciones en píxeles de la imagen de la calibración. */

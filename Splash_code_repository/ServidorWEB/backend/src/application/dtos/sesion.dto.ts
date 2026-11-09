@@ -9,6 +9,8 @@ export type IniciarSesionEntrada = {
    * para alguien que llega después). Nadador (sesión libre): uno solo, que queda a su nombre.
    */
   carriles?: { carril: number; nadador_id?: string | null }[]
+  /** Entrenador: la sesión es de este grupo (sus nadadores se pueden sumar). Sin grupo = libre: cualquier nadador. */
+  grupo_id?: string | null
 }
 
 export type UnirseSesionEntrada = { carril: number }

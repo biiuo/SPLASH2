@@ -59,7 +59,7 @@ model Usuario {
   creado_en     DateTime   @default(now()) @db.Timestamptz(6)
 
   perfil_nadador      Nadador?        @relation("CuentaDelNadador")
-  nadadores_a_cargo   Nadador[]       @relation("EntrenadorDelNadador")
+  grupos              Grupo[]
   configuraciones     Configuracion[]
   calibraciones       Calibracion[]
   sesiones_entrenador Sesion[]
@@ -71,16 +71,40 @@ model Usuario {
 model Nadador {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   usuario_id    String?  @unique @db.Uuid
-  entrenador_id String?  @db.Uuid
   nombre        String
   creado_en     DateTime @default(now()) @db.Timestamptz(6)
 
-  usuario    Usuario?          @relation("CuentaDelNadador", fields: [usuario_id], references: [id], onDelete: Cascade)
-  entrenador Usuario?          @relation("EntrenadorDelNadador", fields: [entrenador_id], references: [id], onDelete: SetNull)
-  sesiones   SesionNadador[]
+  usuario  Usuario?        @relation("CuentaDelNadador", fields: [usuario_id], references: [id], onDelete: Cascade)
+  sesiones SesionNadador[]
+  grupos   GrupoNadador[]
 
-  @@index([entrenador_id], map: "nadadores_entrenador_idx")
   @@map("nadadores")
+}
+
+/// Un grupo de un entrenador (un entrenador puede tener varios). El nombre no se repite por entrenador (índice en la migración).
+model Grupo {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entrenador_id String   @db.Uuid
+  nombre        String
+  creado_en     DateTime @default(now()) @db.Timestamptz(6)
+
+  entrenador Usuario        @relation(fields: [entrenador_id], references: [id], onDelete: Cascade)
+  nadadores  GrupoNadador[]
+  sesiones   Sesion[]
+
+  @@map("grupos")
+}
+
+model GrupoNadador {
+  grupo_id   String @db.Uuid
+  nadador_id String @db.Uuid
+
+  grupo   Grupo   @relation(fields: [grupo_id], references: [id], onDelete: Cascade)
+  nadador Nadador @relation(fields: [nadador_id], references: [id], onDelete: Cascade)
+
+  @@id([grupo_id, nadador_id])
+  @@index([nadador_id], map: "grupo_nadadores_nadador_idx")
+  @@map("grupo_nadadores")
 }
 
 /// Datos de la piscina y de la cámara que usa la calibración. Siempre hay una sola fila (id = true).
@@ -138,6 +162,8 @@ model Sesion {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   entrenador_id  String?      @db.Uuid
   calibracion_id String?      @db.Uuid
+  /// La sesión de un entrenador es de un grupo, o libre (null: cualquier nadador se puede sumar).
+  grupo_id       String?      @db.Uuid
   estado         EstadoSesion @default(activa)
   modo           ModoProceso
   inicio         DateTime     @default(now()) @db.Timestamptz(6)
@@ -145,6 +171,7 @@ model Sesion {
 
   entrenador  Usuario?        @relation(fields: [entrenador_id], references: [id], onDelete: SetNull)
   calibracion Calibracion?    @relation(fields: [calibracion_id], references: [id], onDelete: SetNull)
+  grupo       Grupo?          @relation(fields: [grupo_id], references: [id], onDelete: SetNull)
   nadadores   SesionNadador[]
   eventos     Evento[]
   tramos      Tramo[]

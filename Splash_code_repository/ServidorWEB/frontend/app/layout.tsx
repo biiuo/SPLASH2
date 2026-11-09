@@ -4,14 +4,9 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'SafeSplash · Entrena mejor. Nada seguro.',
   description: 'Seguimiento inteligente de velocidad, tiempos y progreso para nadadores.',
-  generator: 'v0.app',
   icons: {
-    icon: [
-      { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)' },
-      { url: '/icon-dark-32x32.png', media: '(prefers-color-scheme: dark)' },
-      { url: '/icon.svg', type: 'image/svg+xml' },
-    ],
-    apple: '/apple-icon.png',
+    icon: '/icono-uninorte.png',
+    apple: '/icono-uninorte.png',
   },
 }
 
@@ -22,5 +17,9 @@ export const viewport: Viewport = {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="es"><body className="antialiased">{children}</body></html>
+  return (
+    <html lang="es">
+      <body className="antialiased">{children}</body>
+    </html>
+  )
 }

@@ -15,10 +15,9 @@ import { UnirseSesionUseCase } from '../../application/use-cases/sesiones/unirse
 import type { ModoProceso } from '../../domain/entities/sesion.entity'
 import { CALIBRACION_REPOSITORY, type CalibracionRepository } from '../../domain/repositories/calibracion.repository'
 import { CONFIGURACION_REPOSITORY, type ConfiguracionRepository } from '../../domain/repositories/configuracion.repository'
-import { NADADOR_REPOSITORY, type NadadorRepository } from '../../domain/repositories/nadador.repository'
+import { GRUPO_REPOSITORY, NADADOR_REPOSITORY, type GrupoRepository, type NadadorRepository } from '../../domain/repositories/nadador.repository'
 import { RESULTADOS_REPOSITORY, type ResultadosRepository } from '../../domain/repositories/resultados.repository'
 import { SESION_REPOSITORY, type SesionRepository } from '../../domain/repositories/sesion.repository'
-import { USUARIO_REPOSITORY, type UsuarioRepository } from '../../domain/repositories/usuario.repository'
 import { AvisosEnMemoria } from '../../infrastructure/avisos/avisos-en-memoria'
 import { GrupoController } from '../controllers/grupo.controller'
 import { SesionesController } from '../controllers/sesiones.controller'
@@ -38,23 +37,29 @@ import { MODO_POR_DEFECTO } from './ajustes.module'
         sesiones: SesionRepository,
         calibraciones: CalibracionRepository,
         nadadores: NadadorRepository,
+        grupos: GrupoRepository,
         avisos: CanalAvisos,
         configuracion: ConfiguracionRepository,
         modo: ModoProceso,
-      ) => new IniciarSesionUseCase(sesiones, calibraciones, nadadores, avisos, configuracion, modo),
-      inject: [SESION_REPOSITORY, CALIBRACION_REPOSITORY, NADADOR_REPOSITORY, CANAL_AVISOS, CONFIGURACION_REPOSITORY, MODO_POR_DEFECTO],
+      ) => new IniciarSesionUseCase(sesiones, calibraciones, nadadores, grupos, avisos, configuracion, modo),
+      inject: [SESION_REPOSITORY, CALIBRACION_REPOSITORY, NADADOR_REPOSITORY, GRUPO_REPOSITORY, CANAL_AVISOS, CONFIGURACION_REPOSITORY, MODO_POR_DEFECTO],
     },
     {
       provide: UnirseSesionUseCase,
-      useFactory: (sesiones: SesionRepository, calibraciones: CalibracionRepository, nadadores: NadadorRepository, avisos: CanalAvisos) =>
-        new UnirseSesionUseCase(sesiones, calibraciones, nadadores, avisos),
-      inject: [SESION_REPOSITORY, CALIBRACION_REPOSITORY, NADADOR_REPOSITORY, CANAL_AVISOS],
+      useFactory: (
+        sesiones: SesionRepository,
+        calibraciones: CalibracionRepository,
+        nadadores: NadadorRepository,
+        grupos: GrupoRepository,
+        avisos: CanalAvisos,
+      ) => new UnirseSesionUseCase(sesiones, calibraciones, nadadores, grupos, avisos),
+      inject: [SESION_REPOSITORY, CALIBRACION_REPOSITORY, NADADOR_REPOSITORY, GRUPO_REPOSITORY, CANAL_AVISOS],
     },
     {
       provide: EstadoCarrilesUseCase,
-      useFactory: (sesiones: SesionRepository, nadadores: NadadorRepository, configuracion: ConfiguracionRepository) =>
-        new EstadoCarrilesUseCase(sesiones, nadadores, configuracion),
-      inject: [SESION_REPOSITORY, NADADOR_REPOSITORY, CONFIGURACION_REPOSITORY],
+      useFactory: (sesiones: SesionRepository, nadadores: NadadorRepository, grupos: GrupoRepository, configuracion: ConfiguracionRepository) =>
+        new EstadoCarrilesUseCase(sesiones, nadadores, grupos, configuracion),
+      inject: [SESION_REPOSITORY, NADADOR_REPOSITORY, GRUPO_REPOSITORY, CONFIGURACION_REPOSITORY],
     },
     {
       provide: ListarSesionesUseCase,
@@ -95,8 +100,8 @@ import { MODO_POR_DEFECTO } from './ajustes.module'
     },
     {
       provide: GrupoUseCases,
-      useFactory: (nadadores: NadadorRepository, usuarios: UsuarioRepository) => new GrupoUseCases(nadadores, usuarios),
-      inject: [NADADOR_REPOSITORY, USUARIO_REPOSITORY],
+      useFactory: (grupos: GrupoRepository, nadadores: NadadorRepository) => new GrupoUseCases(grupos, nadadores),
+      inject: [GRUPO_REPOSITORY, NADADOR_REPOSITORY],
     },
   ],
 })

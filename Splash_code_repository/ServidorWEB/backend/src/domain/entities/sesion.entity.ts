@@ -14,13 +14,13 @@ export type AsignacionCarril = {
  * Cómo ve un carril quien pregunta:
  *   libre    nadie lo usa: se puede empezar una sesión en él
  *   mio      está en una sesión que inicié, o es el carril que me asignaron
- *   grupo    está en la sesión de mi entrenador (si no tiene nadador, me puedo sumar ahí)
+ *   grupo    está en una sesión de un entrenador a la que me puedo sumar (de uno de mis grupos, o libre)
  *   ocupado  lo usa otra sesión
  */
 export type EstadoCarril = {
   carril: number
   estado: 'libre' | 'mio' | 'grupo' | 'ocupado'
-  /** La sesión, solo si es mía o de mi entrenador. */
+  /** La sesión, solo si es mía o una a la que me puedo sumar ("grupo"). */
   sesion_id: string | null
   /** Si ya tiene un nadador asignado. */
   con_nadador: boolean
@@ -41,8 +41,14 @@ export type Sesion = {
   modo: ModoProceso
   /** La calibración con la que se mide esta sesión (queda fija aunque después se active otra). */
   calibracion_id: string | null
-  /** Quién la inició: un entrenador (sesión de su grupo) o un nadador (su sesión libre). */
+  /** Quién la inició: un entrenador (o administrador) o un nadador (su sesión personal). */
   iniciada_por_id: string | null
+  /** Nombre y rol de quien la inició. */
+  iniciada_por: string | null
+  iniciada_por_rol: 'administrador' | 'entrenador' | 'nadador' | null
+  /** Sesión de un entrenador: de un grupo, o libre (null: cualquier nadador se puede sumar). */
+  grupo_id: string | null
+  grupo: string | null
   /** Los carriles de la sesión, con su nadador. */
   carriles: AsignacionCarril[]
   inicio: string
@@ -51,8 +57,6 @@ export type Sesion = {
 
 /** Una sesión con el resumen de lo que se midió (para el historial). */
 export type ResumenSesion = Omit<Sesion, 'carriles'> & {
-  /** Nombre de quien la inició (null si fue por la API sin usuario, o el usuario se borró). */
-  iniciada_por: string | null
   /** Carriles en los que se midió algo. */
   carriles: number[]
   tramos: number

@@ -2,7 +2,7 @@ import { MODOS_PROCESO, type ModoProceso, type Sesion } from '../../../domain/en
 import type { Identidad } from '../../../domain/entities/usuario.entity'
 import type { CalibracionRepository } from '../../../domain/repositories/calibracion.repository'
 import type { ConfiguracionRepository } from '../../../domain/repositories/configuracion.repository'
-import type { NadadorRepository } from '../../../domain/repositories/nadador.repository'
+import type { GrupoRepository, NadadorRepository } from '../../../domain/repositories/nadador.repository'
 import { ConflictoCarriles, type SesionRepository } from '../../../domain/repositories/sesion.repository'
 import type { IniciarSesionEntrada } from '../../dtos/sesion.dto'
 import { ConflictoException, ValidacionException } from '../../exceptions/aplicacion.exceptions'
@@ -13,8 +13,9 @@ import { carrilesAnalizados } from './carriles-analizados'
 /**
  * Abre una sesión sobre uno o más carriles, con la calibración activa (queda fija para la sesión). Puede haber varias
  * sesiones a la vez, cada una en sus carriles:
- *   * un entrenador toma uno o más carriles, cada uno con un nadador de su grupo o reservado sin nadador;
- *   * un nadador puede abrir su sesión libre en un carril que esté libre: queda a su nombre.
+ *   * un entrenador toma uno o más carriles, cada uno con un nadador o reservado sin nadador. La sesión es de uno de
+ *     sus grupos (solo nadadores de ese grupo) o libre (cualquier nadador; abierta a quien quiera sumarse);
+ *   * un nadador puede abrir su sesión personal en un carril que esté libre: queda a su nombre.
  * Un carril, un nadador y una persona (como quien inicia) están en una sola sesión activa a la vez.
  */
 export class IniciarSesionUseCase {
@@ -22,6 +23,7 @@ export class IniciarSesionUseCase {
     private readonly sesiones: SesionRepository,
     private readonly calibraciones: CalibracionRepository,
     private readonly nadadores: NadadorRepository,
+    private readonly grupos: GrupoRepository,
     private readonly avisos: CanalAvisos,
     private readonly configuracion: ConfiguracionRepository,
     /** PROCESAR_EN del .env. */
@@ -43,6 +45,7 @@ export class IniciarSesionUseCase {
 
     const pedidos = Array.isArray(entrada?.carriles) ? entrada.carriles : []
     let carriles: { carril: number; nadadorId: string | null }[]
+    let grupoId: string | null = null
     if (quien.rol === 'nadador') {
       // sesión libre: un carril, a su nombre
       if (pedidos.length !== 1) throw new ValidacionException('Elegí un carril para tu sesión.')
@@ -51,11 +54,18 @@ export class IniciarSesionUseCase {
     } else {
       if (pedidos.length === 0) throw new ValidacionException('Elegí al menos un carril para la sesión.')
       carriles = pedidos.map((p) => ({ carril: p?.carril, nadadorId: p?.nadador_id ?? null }))
+      // de un grupo (solo sus nadadores) o libre (cualquier nadador)
+      const grupo = entrada?.grupo_id ? await this.grupos.obtener(String(entrada.grupo_id)) : null
+      if (entrada?.grupo_id && (!grupo || (quien.rol !== 'administrador' && grupo.entrenador_id !== quien.id))) {
+        throw new ValidacionException('Ese grupo no es tuyo.')
+      }
+      grupoId = grupo?.id ?? null
       for (const c of carriles) {
         if (c.nadadorId === null) continue
         const n = await this.nadadores.obtener(String(c.nadadorId))
-        if (!n || (quien.rol !== 'administrador' && n.entrenador_id !== quien.id)) {
-          throw new ValidacionException('Uno de los nadadores elegidos no está en tu grupo.')
+        if (!n) throw new ValidacionException('Uno de los nadadores elegidos no existe.')
+        if (grupo && !grupo.nadadores.some((x) => x.id === n.id)) {
+          throw new ValidacionException(`${n.nombre} no está en el grupo "${grupo.nombre}".`)
         }
       }
     }
@@ -86,7 +96,7 @@ export class IniciarSesionUseCase {
 
     let sesion: Sesion
     try {
-      sesion = await this.sesiones.iniciar({ modo, calibracionId: calibracion.id, usuarioId: quien.id, carriles })
+      sesion = await this.sesiones.iniciar({ modo, calibracionId: calibracion.id, usuarioId: quien.id, grupoId, carriles })
     } catch (e) {
       if (e instanceof ConflictoCarriles) throw new ConflictoException('Otro usuario tomó ese carril recién. Elegí otro.')
       throw e

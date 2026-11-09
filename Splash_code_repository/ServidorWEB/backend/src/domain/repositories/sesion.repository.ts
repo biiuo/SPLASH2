@@ -4,6 +4,8 @@ export type NuevaSesion = {
   modo: ModoProceso
   calibracionId: string | null
   usuarioId: string
+  /** Sesión de un entrenador: de este grupo, o libre (null). */
+  grupoId: string | null
   /** Los carriles que toma la sesión; nadadorId null = reservado sin nadador. */
   carriles: { carril: number; nadadorId: string | null }[]
 }

@@ -1,23 +1,26 @@
 import type { Sesion } from '../../../domain/entities/sesion.entity'
 import type { Identidad } from '../../../domain/entities/usuario.entity'
 import type { CalibracionRepository } from '../../../domain/repositories/calibracion.repository'
-import type { NadadorRepository } from '../../../domain/repositories/nadador.repository'
+import type { GrupoRepository, NadadorRepository } from '../../../domain/repositories/nadador.repository'
 import { ConflictoCarriles, type SesionRepository } from '../../../domain/repositories/sesion.repository'
 import { esUuid } from '../../../domain/services/identificador'
+import { puedeSumarse } from '../../../domain/services/sumarse-sesion'
 import type { UnirseSesionEntrada } from '../../dtos/sesion.dto'
 import { ConflictoException, NoEncontradoException, ProhibidoException, ValidacionException } from '../../exceptions/aplicacion.exceptions'
 import type { CanalAvisos } from '../../ports/avisos.ports'
 import { carrilesAnalizados } from './carriles-analizados'
 
 /**
- * Un nadador que llega tarde se suma a la sesión en curso de SU entrenador: en un carril de esa sesión que todavía no
- * tiene nadador, o en un carril libre de la piscina (que pasa a ser de esa sesión).
+ * Un nadador que llega tarde se suma a la sesión en curso de un entrenador: la de uno de sus grupos, o una sesión libre
+ * (abierta a cualquiera). Ocupa un carril de esa sesión que todavía no tiene nadador, o un carril libre de la piscina
+ * (que pasa a ser de esa sesión).
  */
 export class UnirseSesionUseCase {
   constructor(
     private readonly sesiones: SesionRepository,
     private readonly calibraciones: CalibracionRepository,
     private readonly nadadores: NadadorRepository,
+    private readonly grupos: GrupoRepository,
     private readonly avisos: CanalAvisos,
   ) {}
 
@@ -26,8 +29,9 @@ export class UnirseSesionUseCase {
     const perfil = await this.nadadores.asegurarDeUsuario(quien.id, quien.nombre)
     const sesion = esUuid(sesionId) ? await this.sesiones.obtener(sesionId) : null
     if (!sesion || sesion.estado !== 'activa') throw new NoEncontradoException('No hay una sesión en curso con ese id.')
-    if (!perfil.entrenador_id || sesion.iniciada_por_id !== perfil.entrenador_id) {
-      throw new ProhibidoException('Solo podés sumarte a la sesión de tu entrenador.')
+    const misGrupos = (await this.grupos.deNadador(perfil.id)).map((g) => g.id)
+    if (!puedeSumarse(sesion, quien.id, misGrupos)) {
+      throw new ProhibidoException('Esa sesión es de un grupo en el que no estás.')
     }
     if (await this.sesiones.obtenerActiva(quien.id)) throw new ConflictoException('Ya estás en una sesión.')
 
