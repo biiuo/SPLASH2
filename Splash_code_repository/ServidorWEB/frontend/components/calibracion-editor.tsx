@@ -66,6 +66,7 @@ function CalibracionPantalla({
   const [opacidadGuias, setOpacidadGuias] = useState(0.9)
   const [video, setVideo] = useState<{ duracion: number; t: number } | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [cargandoFrame, setCargandoFrame] = useState(false)
   const [cargado, setCargado] = useState(false)
   const [nombrePosicion, setNombrePosicion] = useState('') // para reconocer esta posición de la cámara en el historial
   const [guardadaId, setGuardadaId] = useState<string | null>(null)
@@ -199,6 +200,20 @@ function CalibracionPantalla({
         fijarBase(c)
       }
       img.src = url
+    }
+  }
+
+  /** Toma el último frame de la cámara (lo deja el servidor de IA) como imagen de referencia. */
+  async function usarFrameDeCamara() {
+    setCargandoFrame(true)
+    try {
+      const c = await api.frameDeCamara()
+      setVideo(null)
+      fijarBase(c)
+    } catch (e) {
+      setAviso(e instanceof ErrorApi ? e.message : 'No se pudo traer el frame de la cámara.')
+    } finally {
+      setCargandoFrame(false)
     }
   }
 
@@ -611,11 +626,20 @@ function CalibracionPantalla({
           <div className="flex flex-col gap-4">
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <h2 className="font-semibold">Imagen de referencia</h2>
+              <button
+                type="button"
+                onClick={usarFrameDeCamara}
+                disabled={cargandoFrame}
+                className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+              >
+                {cargandoFrame ? 'Trayendo el frame…' : 'Usar la imagen de la cámara'}
+              </button>
+              <p className="mt-3 text-xs text-slate-400">O subí una foto o un video de la piscina:</p>
               <input
                 type="file"
                 accept="image/*,video/*"
                 onChange={(e) => e.target.files?.[0] && cargarImagenOVideo(e.target.files[0])}
-                className="mt-3 w-full text-sm"
+                className="mt-1 w-full text-sm"
               />
               {tam && <p className="mt-2 text-xs text-slate-400">Tamaño: {tam[0]} × {tam[1]} px</p>}
             </div>

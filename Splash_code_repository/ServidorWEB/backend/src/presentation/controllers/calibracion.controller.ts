@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, StreamableFile } from '@nestjs/common'
+import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Res, StreamableFile } from '@nestjs/common'
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -22,6 +22,10 @@ import type {
 import { ActivarCalibracionUseCase } from '../../application/use-cases/calibracion/activar-calibracion.usecase'
 import { ActualizarCalibracionUseCase } from '../../application/use-cases/calibracion/actualizar-calibracion.usecase'
 import { ObtenerImagenCalibracionUseCase } from '../../application/use-cases/calibracion/obtener-imagen.usecase'
+import {
+  ObtenerFrameCamaraUseCase,
+  PublicarFrameCamaraUseCase,
+} from '../../application/use-cases/calibracion/frame-camara.usecases'
 import { ObtenerZonasUseCase } from '../../application/use-cases/calibracion/obtener-zonas.usecase'
 import { ListarCalibracionesUseCase } from '../../application/use-cases/calibracion/listar-calibraciones.usecase'
 import { EvaluarCalibracionUseCase } from '../../application/use-cases/calibracion/evaluar-calibracion.usecase'
@@ -29,6 +33,9 @@ import { GuardarCalibracionUseCase } from '../../application/use-cases/calibraci
 import { ObtenerCalibracionActivaUseCase } from '../../application/use-cases/calibracion/obtener-calibracion-activa.usecase'
 import { ObtenerPuntosReferenciaUseCase } from '../../application/use-cases/calibracion/obtener-puntos-referencia.usecase'
 import type { Rol, Solicitante as TipoSolicitante } from '../../domain/entities/usuario.entity'
+import type { Response } from 'express'
+
+import { ProhibidoException } from '../../application/exceptions/aplicacion.exceptions'
 import { PermiteServicio, Roles, Solicitante, idDe } from '../auth/decoradores'
 import { EJEMPLOS } from '../swagger/ejemplos'
 
@@ -52,7 +59,45 @@ export class CalibracionController {
     private readonly actualizarCalibracion: ActualizarCalibracionUseCase,
     private readonly obtenerZonas: ObtenerZonasUseCase,
     private readonly obtenerImagen: ObtenerImagenCalibracionUseCase,
+    private readonly publicarFrame: PublicarFrameCamaraUseCase,
+    private readonly obtenerFrame: ObtenerFrameCamaraUseCase,
   ) {}
+
+  /** El servidor de IA deja el último frame de la cámara (cada pocos segundos). */
+  @Post('frame-actual')
+  @PermiteServicio()
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Dejar el último frame de la cámara (servidor de IA)',
+    description:
+      'El servidor de IA manda un frame JPEG de la cámara cada pocos segundos. El backend guarda solo el último, para que ' +
+      'la web lo use como imagen de referencia al calibrar o dibujar zonas, sin subir una foto a mano.',
+  })
+  @ApiBody({ schema: { type: 'object', properties: { imagen: { type: 'string', example: 'data:image/jpeg;base64,/9j/4AAQ...' } } } })
+  @ApiOkResponse({ description: '`{ guardado: true }`' })
+  @ApiBadRequestResponse({ description: 'No es un JPEG válido o es demasiado grande.' })
+  @ApiForbiddenResponse({ description: 'Solo el servidor de IA o un administrador.' })
+  recibirFrame(@Body() cuerpo: { imagen?: unknown }, @Solicitante() s: TipoSolicitante) {
+    if (s.tipo === 'usuario' && s.rol !== 'administrador') throw new ProhibidoException('Solo el servidor de IA manda frames de la cámara.')
+    return this.publicarFrame.execute(cuerpo)
+  }
+
+  /** El último frame que mandó el servidor de IA, para usarlo como imagen de referencia. */
+  @Get('frame-actual')
+  @Roles(...CALIBRAN)
+  @Header('Cache-Control', 'no-store')
+  @ApiProduces('image/jpeg')
+  @ApiOperation({
+    summary: 'El último frame de la cámara',
+    description: 'JPEG a la resolución con la que el servidor de IA lee la cámara. 404 si no llegó ninguno o si el último es viejo.',
+  })
+  @ApiOkResponse({ description: 'La imagen (image/jpeg). La cabecera `X-Frame-Edad-Ms` dice qué tan viejo es.' })
+  @ApiNotFoundResponse({ description: 'Todavía no llegó ningún frame, o dejaron de llegar.' })
+  frameActual(@Res({ passthrough: true }) res: Response) {
+    const { jpeg, edad_ms } = this.obtenerFrame.execute()
+    res.setHeader('X-Frame-Edad-Ms', String(edad_ms))
+    return new StreamableFile(jpeg, { type: 'image/jpeg' })
+  }
 
   /** Los puntos que hay que marcar en la imagen, según la piscina configurada. */
   @Get('puntos-referencia')
