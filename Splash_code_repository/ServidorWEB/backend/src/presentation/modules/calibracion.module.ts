@@ -3,6 +3,12 @@ import { Module } from '@nestjs/common'
 import { ActivarCalibracionUseCase } from '../../application/use-cases/calibracion/activar-calibracion.usecase'
 import { ActualizarCalibracionUseCase } from '../../application/use-cases/calibracion/actualizar-calibracion.usecase'
 import { ObtenerImagenCalibracionUseCase } from '../../application/use-cases/calibracion/obtener-imagen.usecase'
+import {
+  ObtenerFrameCamaraUseCase,
+  PublicarFrameCamaraUseCase,
+} from '../../application/use-cases/calibracion/frame-camara.usecases'
+import { ALMACEN_FRAME_CAMARA, type AlmacenFrameCamara } from '../../application/ports/frame-camara.ports'
+import { FrameCamaraEnMemoria } from '../../infrastructure/camara/frame-camara-en-memoria'
 import { ObtenerZonasUseCase } from '../../application/use-cases/calibracion/obtener-zonas.usecase'
 import { ListarCalibracionesUseCase } from '../../application/use-cases/calibracion/listar-calibraciones.usecase'
 import { EvaluarCalibracionUseCase } from '../../application/use-cases/calibracion/evaluar-calibracion.usecase'
@@ -16,6 +22,17 @@ import { CalibracionController } from '../controllers/calibracion.controller'
 @Module({
   controllers: [CalibracionController],
   providers: [
+    { provide: ALMACEN_FRAME_CAMARA, useClass: FrameCamaraEnMemoria },
+    {
+      provide: PublicarFrameCamaraUseCase,
+      useFactory: (almacen: AlmacenFrameCamara) => new PublicarFrameCamaraUseCase(almacen),
+      inject: [ALMACEN_FRAME_CAMARA],
+    },
+    {
+      provide: ObtenerFrameCamaraUseCase,
+      useFactory: (almacen: AlmacenFrameCamara) => new ObtenerFrameCamaraUseCase(almacen),
+      inject: [ALMACEN_FRAME_CAMARA],
+    },
     {
       provide: ObtenerPuntosReferenciaUseCase,
       useFactory: (config: ConfiguracionRepository) => new ObtenerPuntosReferenciaUseCase(config),

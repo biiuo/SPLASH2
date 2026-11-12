@@ -111,6 +111,30 @@ export const api = {
     bmp.close()
     return c
   },
+  /**
+   * El último frame de la cámara (lo deja el servidor de IA), listo para dibujar en un canvas.
+   * Lanza ErrorApi con el motivo si todavía no llegó ninguno o si dejaron de llegar.
+   */
+  frameDeCamara: async (): Promise<HTMLCanvasElement> => {
+    let r: Response
+    try {
+      r = await fetch('/api/calibracion/frame-actual', { cache: 'no-store' })
+    } catch {
+      throw new ErrorApi(0, 'No se pudo conectar con el servidor.')
+    }
+    if (!r.ok) {
+      const datos = (await r.json().catch(() => null)) as { error?: string } | null
+      if (r.status === 401) avisarSinSesion()
+      throw new ErrorApi(r.status, mensajeDe(r.status, datos))
+    }
+    const bmp = await createImageBitmap(await r.blob())
+    const c = document.createElement('canvas')
+    c.width = bmp.width
+    c.height = bmp.height
+    c.getContext('2d')?.drawImage(bmp, 0, 0)
+    bmp.close()
+    return c
+  },
   /** Las zonas de una calibración como zones.json, o null si no tiene. */
   zonasDeCalibracion: (id: string) => pedir<ArchivoZonas | null>(`calibracion/${encodeURIComponent(id)}/zonas`),
 

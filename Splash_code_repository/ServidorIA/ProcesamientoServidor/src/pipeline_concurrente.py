@@ -38,6 +38,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from enviador import EnviadorBackend  # noqa: E402
 from identidad import GestorIdentidades  # noqa: E402
+from publicador_frame import PublicadorFrame  # noqa: E402
 from trayectoria import Trayectorias  # noqa: E402
 from zonas_activas import ZonasActivas  # noqa: E402
 
@@ -59,6 +60,7 @@ class Captura(threading.Thread):
         self.descartados = 0
         self.fps_fuente = 25.0
         self.t_inicio = None
+        self.ultimo_frame = None    # el último frame leído (lo usa el publicador del frame de calibración)
 
     def run(self):
         cap = cv2.VideoCapture(self.fuente)
@@ -78,6 +80,7 @@ class Captura(threading.Thread):
                 # cámara: reloj real; archivo: tiempo del video (reproducible)
                 t_cap = idx / self.fps_fuente if es_archivo else time.time()
                 paquete = (idx, t_cap, frame)
+                self.ultimo_frame = frame
                 if self.descartar:
                     try:
                         self.cola.put_nowait(paquete)
@@ -290,6 +293,8 @@ def main():
                     help="si se indica, manda las posiciones a la sesión activa del backend (por ejemplo http://backend:3001)")
     ap.add_argument("--sesion", default=os.environ.get("SESION_ID") or None,
                     help="id de la sesión a la que enviar; por defecto se une a la que esté activa")
+    ap.add_argument("--frame-cada-s", type=float, default=float(os.environ.get("FRAME_CADA_S", "3")),
+                    help="cada cuántos segundos dejar el último frame de la cámara en el backend, para calibrar desde la web (0 = no mandar)")
     ap.add_argument("--hz-envio", type=float, default=3.0, help="posiciones por segundo y por nadador que se envían")
     ap.add_argument("--extrapolar-max-s", type=float, default=1.5,
                     help="segundos que se extrapola la posición de un nadador perdido antes de mantener la última")
@@ -357,6 +362,11 @@ def main():
 
     print(f"Modo: {modo} | fuente: {fuente} | {ancho}x{alto}")
     t0 = time.time()
+    publicador = None
+    if args.backend_url and args.frame_cada_s > 0:
+        publicador = PublicadorFrame(args.backend_url, lambda: captura.ultimo_frame, token=os.environ.get("IA_TOKEN") or None,
+                                     cada_s=args.frame_cada_s)
+        publicador.start()
     if enviador:
         enviador.start()
     captura.start()
@@ -389,6 +399,8 @@ def main():
         pass
     finally:
         parar.set()
+        if publicador:
+            publicador.cerrar()
         captura.join(timeout=3)
         inferencia.join(timeout=3)
         if enviador:
