@@ -257,11 +257,23 @@ export type TramoGuardado = {
 export type ResultadosSesion = { eventos: EventoGuardado[]; tramos: TramoGuardado[] }
 
 /** Una sesión del historial, con el resumen de lo medido (GET /api/sesiones). */
-export type ResumenSesion = Omit<Sesion, 'carriles'> & {
-  carriles: number[]
+export type ResumenCarril = {
+  carril: number
+  /** Nombre del nadador de ese carril (null: carril sin nadador asignado). */
+  nadador: string | null
   tramos: number
   distancia_m: number
   velocidad_media_ms: number | null
+}
+
+export type ResumenSesion = Omit<Sesion, 'carriles'> & {
+  carriles: number[]
+  /** Totales de toda la sesión. */
+  tramos: number
+  distancia_m: number
+  velocidad_media_ms: number | null
+  /** Lo medido carril por carril, cada nadador por separado. */
+  por_carril: ResumenCarril[]
 }
 
 /** Una calibración del historial. Cada una es una posición de la cámara, con sus zonas. */
