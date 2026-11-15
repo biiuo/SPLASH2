@@ -1,0 +1,175 @@
+name: safesplash-dev
+
+services:
+  # ---------------------------------------------------------------- base de datos
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-safesplash}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definí POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-safesplash}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks: [backend]
+
+  # ---------------------------------------------------------------- backend (NestJS, con recarga)
+  backend:
+    build:
+      context: ./ServidorWEB/backend
+      dockerfile_inline: |
+        FROM node:22-alpine
+        RUN apk add --no-cache openssl
+        WORKDIR /app
+    depends_on:
+      db:
+        condition: service_healthy
+    working_dir: /app
+    # npm install: no hace nada si las dependencias no cambiaron. prisma generate / migrate deploy: como en producción.
+    command: >
+      sh -c "npm install --no-audit --no-fund
+      && npx prisma generate
+      && npx prisma migrate deploy
+      && npm run start:dev"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-safesplash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-safesplash}}
+      PORT: "3001"
+      NODE_ENV: development
+      JWT_SECRET: ${JWT_SECRET:?Definí JWT_SECRET en .env (al menos 32 caracteres)}
+      IA_TOKEN: ${IA_TOKEN:?Definí IA_TOKEN en .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PROCESAR_EN: ${PROCESAR_EN:-servidor}
+      SWAGGER: ${SWAGGER:-on}
+      # Docker en Windows/Mac no avisa cuando cambia un archivo de una carpeta compartida: TypeScript pregunta cada tanto.
+      TSC_WATCHFILE: PriorityPollingInterval
+      TSC_WATCHDIRECTORY: DynamicPriorityPolling
+    volumes:
+      - ./ServidorWEB/backend:/app
+      - backend_node_modules:/app/node_modules    # las dependencias viven en el contenedor, no en tu PC
+    ports:
+      - "127.0.0.1:3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/salud >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 180s     # la primera vez instala dependencias y compila
+      retries: 10
+    networks: [backend]
+
+  # ---------------------------------------------------------------- frontend (Next.js, con recarga)
+  frontend:
+    build:
+      context: ./ServidorWEB/frontend
+      dockerfile_inline: |
+        FROM node:22-alpine
+        WORKDIR /app
+    depends_on:
+      backend:
+        condition: service_healthy
+    working_dir: /app
+    # --webpack: el modo por defecto de Next 16 (Turbopack) no siempre se entera de los cambios en carpetas compartidas.
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --webpack -H 0.0.0.0 -p 3000"
+    environment:
+      BACKEND_URL: http://backend:3001
+      NEXT_TELEMETRY_DISABLED: "1"
+      WATCHPACK_POLLING: "true"        # revisar cambios preguntando (necesario en carpetas compartidas de Windows/Mac)
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./ServidorWEB/frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    ports:
+      - "3000:3000"
+    networks: [backend]
+
+  # ---------------------------------------------------------------- relé RTSP de la cámara
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.3
+    environment:
+      MTX_PATHS_CAM_SOURCE: ${CAMERA_RTSP_URL:-publisher}
+    ports:
+      - "8554:8554"
+    networks: [video]
+
+  # ---------------------------------------------------------------- servidor de IA (se recarga con "up --watch")
+  ia:
+    build: ./ServidorIA/ProcesamientoServidor
+    depends_on: [mediamtx]
+    environment:
+      CAMERA_SOURCE: ${CAMERA_SOURCE:-rtsp://mediamtx:8554/cam}
+      SPLASH_WEIGHTS: /models/best.pt
+      ZONES_FILE: /config/zones.json
+      BACKEND_URL: ${IA_BACKEND_URL:-http://backend:3001}
+      IA_TOKEN: ${IA_TOKEN:?Definí IA_TOKEN en .env}
+      HZ_ENVIO: ${HZ_ENVIO:-3}
+      FRAME_CADA_S: ${FRAME_CADA_S:-3}
+      CONF: ${CONF:-0.10}
+      TRACK_THRESH: ${TRACK_THRESH:-0.30}
+      MATCH_THRESH: ${MATCH_THRESH:-0.9}
+      TRACK_BUFFER_S: ${TRACK_BUFFER_S:-4}
+      FPS_PROCESO: ${FPS_PROCESO:-10}
+      ASSO_FUNC: ${ASSO_FUNC:-diou}
+      CONTENIDAS: ${CONTENIDAS:-0.8}
+    volumes:
+      - ./ServidorIA/ProcesamientoServidor/modelo/best.pt:/models/best.pt:ro
+      - ./config:/config:ro
+      - torch_cache:/cache/torch
+      - ia_data:/data
+    develop:
+      watch:
+        # un .py cambió: se copia al contenedor y se reinicia el pipeline (sin reconstruir la imagen)
+        - action: sync+restart
+          path: ./ServidorIA/ProcesamientoServidor/src
+          target: /app/src
+          ignore: [__pycache__/, "*.pyc"]
+        # cambió algo que va dentro de la imagen: se reconstruye sola
+        - action: rebuild
+          path: ./ServidorIA/ProcesamientoServidor/requirements.txt
+        - action: rebuild
+          path: ./ServidorIA/ProcesamientoServidor/entrypoint.sh
+        - action: rebuild
+          path: ./ServidorIA/ProcesamientoServidor/Dockerfile
+    networks: [backend, video]
+
+  # ---------------------------------------------------------------- streaming WebSocket para el celular (opcional)
+  stream-ws:
+    build: ./ServidorIA/ProcesamientoCelular
+    profiles: [phone]
+    depends_on: [mediamtx]
+    environment:
+      CAMARA_SOURCE: ${CAMERA_SOURCE:-rtsp://mediamtx:8554/cam}
+    ports:
+      - "8765:8765"
+    networks: [video]
+
+  # ---------------------------------------------------------------- cámara simulada (solo demo)
+  camara-simulada:
+    image: linuxserver/ffmpeg:latest
+    profiles: [demo]
+    depends_on: [mediamtx]
+    volumes:
+      - ./videos:/videos:ro
+    command: >
+      -re -stream_loop -1 -i /videos/${DEMO_VIDEO:-demo.mp4}
+      -c:v libx264 -preset ultrafast -tune zerolatency
+      -f rtsp -rtsp_transport tcp rtsp://mediamtx:8554/cam
+    networks: [video]
+
+networks:
+  backend:
+  video:
+
+volumes:
+  pgdata:
+  torch_cache:
+  ia_data:
+  backend_node_modules:
+  frontend_node_modules:
+  frontend_next:

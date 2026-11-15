@@ -73,6 +73,14 @@ Supabase (Connect → Direct), terminada en `?sslmode=require&uselibpqcompat=tru
 
 ## 3. Levantar
 
+### En modo desarrollo
+
+Para que los cambios se ejecuten automáticamente:
+
+```powershell
+docker compose -f docker-compose.dev.yml up --watch
+```
+
 ### Con un video de prueba (sin cámara)
 
 Poner un video de la piscina en `videos/demo.mp4` (los videos no se suben a git: hay que copiarlo a mano). Después:
