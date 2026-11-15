@@ -62,33 +62,46 @@ export function HistorialSesiones() {
         )}
         {!problema && !!sesiones?.length && (
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-left text-sm">
+            <table className="w-full min-w-[44rem] text-left text-sm">
               <thead className="text-xs uppercase tracking-wider text-slate-400">
                 <tr>
                   <th className="py-2 pr-4 font-semibold">Inicio</th>
                   <th className="py-2 pr-4 font-semibold">Duración</th>
-                  <th className="py-2 pr-4 font-semibold">Carriles</th>
+                  <th className="py-2 pr-4 font-semibold">Carril</th>
+                  <th className="py-2 pr-4 font-semibold">Nadador</th>
                   <th className="py-2 pr-4 font-semibold">Tramos</th>
                   <th className="py-2 pr-4 font-semibold">Distancia</th>
                   <th className="py-2 pr-4 font-semibold">Velocidad media</th>
                   <th className="py-2 font-semibold">Iniciada por</th>
                 </tr>
               </thead>
-              <tbody>
-                {sesiones.map((s) => (
-                  <tr key={s.id} className="border-t border-slate-100">
-                    <td className="py-3 pr-4 capitalize">{fecha(s.inicio)}</td>
-                    <td className="py-3 pr-4">
-                      {s.fin ? formatearDuracion(Date.parse(s.fin) - Date.parse(s.inicio)) : <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">En curso</span>}
-                    </td>
-                    <td className="py-3 pr-4">{s.carriles.length ? s.carriles.join(', ') : '—'}</td>
-                    <td className="py-3 pr-4">{s.tramos}</td>
-                    <td className="py-3 pr-4">{s.distancia_m ? `${Math.round(s.distancia_m)} m` : '—'}</td>
-                    <td className="py-3 pr-4">{formatearVelocidad(s.velocidad_media_ms)}</td>
-                    <td className="py-3 text-slate-500">{s.iniciada_por ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
+              {/* un <tbody> por sesión: sus datos (inicio, duración, quién la inició) una vez, y debajo una fila por carril */}
+              {sesiones.map((s) => {
+                const filas = s.por_carril.length ? s.por_carril : [null]
+                const span = filas.length
+                return (
+                  <tbody key={s.id} className="border-t border-slate-100">
+                    {filas.map((c, i) => (
+                      <tr key={c?.carril ?? 'sin-carriles'} className={i > 0 ? 'border-t border-dashed border-slate-100' : ''}>
+                        {i === 0 && (
+                          <>
+                            <td rowSpan={span} className="py-3 pr-4 align-top capitalize">{fecha(s.inicio)}</td>
+                            <td rowSpan={span} className="py-3 pr-4 align-top">
+                              {s.fin ? formatearDuracion(Date.parse(s.fin) - Date.parse(s.inicio)) : <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">En curso</span>}
+                            </td>
+                          </>
+                        )}
+                        <td className="py-2.5 pr-4">{c ? c.carril : '—'}</td>
+                        <td className="py-2.5 pr-4">{c?.nadador ?? '—'}</td>
+                        <td className="py-2.5 pr-4">{c ? c.tramos : '—'}</td>
+                        <td className="py-2.5 pr-4">{c?.distancia_m ? `${Math.round(c.distancia_m)} m` : '—'}</td>
+                        <td className="py-2.5 pr-4">{c ? formatearVelocidad(c.velocidad_media_ms) : '—'}</td>
+                        {i === 0 && <td rowSpan={span} className="py-3 align-top text-slate-500">{s.iniciada_por ?? '—'}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                )
+              })}
             </table>
           </div>
         )}

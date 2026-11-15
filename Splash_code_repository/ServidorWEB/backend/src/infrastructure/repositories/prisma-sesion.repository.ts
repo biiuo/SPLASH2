@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import type { ResumenSesion, Sesion } from '../../domain/entities/sesion.entity'
+import type { ResumenCarril, ResumenSesion, Sesion } from '../../domain/entities/sesion.entity'
 import { ConflictoCarriles, type NuevaSesion, type SesionRepository } from '../../domain/repositories/sesion.repository'
 import { PrismaService } from '../persistence/prisma.service'
 import type { Prisma, Sesion as FilaSesion } from '../persistence/generated/prisma/client'
@@ -131,7 +131,7 @@ export class PrismaSesionRepository implements SesionRepository {
       include: {
         entrenador: { select: { nombre: true, rol: true } },
         grupo: { select: { nombre: true } },
-        nadadores: { select: { carril: true, nadador: { select: { usuario_id: true } } } },
+        nadadores: { select: { carril: true, nadador: { select: { nombre: true, usuario_id: true } } } },
       },
     })
     if (!filas.length) return []
@@ -149,26 +149,55 @@ export class PrismaSesionRepository implements SesionRepository {
       where: { sesion_id: { in: ids } },
       select: { sesion_id: true, carril: true, distancia_m: true, t_inicio: true, t_fin: true },
     })
-    const porSesion = new Map<string, { carriles: Set<number>; tramos: number; metros: number; segundos: number }>()
+    // lo medido, carril por carril (cada nadador por separado); los totales de la sesión salen de sumar estos
+    type Medido = { tramos: number; metros: number; segundos: number }
+    const porSesion = new Map<string, Map<number, Medido>>()
     for (const t of tramos) {
       const permitidos = suyos.get(t.sesion_id)
       if (permitidos && !permitidos.has(t.carril)) continue
-      const r = porSesion.get(t.sesion_id) ?? { carriles: new Set<number>(), tramos: 0, metros: 0, segundos: 0 }
-      r.carriles.add(t.carril)
-      r.tramos += 1
-      r.metros += t.distancia_m.toNumber()
-      r.segundos += (t.t_fin.getTime() - t.t_inicio.getTime()) / 1000
-      porSesion.set(t.sesion_id, r)
+      const carriles = porSesion.get(t.sesion_id) ?? new Map<number, Medido>()
+      const m = carriles.get(t.carril) ?? { tramos: 0, metros: 0, segundos: 0 }
+      m.tramos += 1
+      m.metros += t.distancia_m.toNumber()
+      m.segundos += (t.t_fin.getTime() - t.t_inicio.getTime()) / 1000
+      carriles.set(t.carril, m)
+      porSesion.set(t.sesion_id, carriles)
     }
+    const velocidad = (metros: number, segundos: number) => (segundos > 0 ? Math.round((metros / segundos) * 1000) / 1000 : null)
     return filas.map((f) => {
-      const r = porSesion.get(f.id)
+      const medido = porSesion.get(f.id) ?? new Map<number, Medido>()
+      const permitidos = suyos.get(f.id)
+      // una fila por carril de la sesión (con su nadador, aunque todavía no tenga tramos) y por cada carril donde se midió algo
+      const numeros = new Set<number>(medido.keys())
+      for (const n of f.nadadores) if (!permitidos || permitidos.has(n.carril)) numeros.add(n.carril)
+      const por_carril: ResumenCarril[] = [...numeros]
+        .sort((a, b) => a - b)
+        .map((carril) => {
+          const m = medido.get(carril)
+          return {
+            carril,
+            nadador: f.nadadores.find((n) => n.carril === carril)?.nadador?.nombre ?? null,
+            tramos: m?.tramos ?? 0,
+            distancia_m: m ? Math.round(m.metros * 100) / 100 : 0,
+            velocidad_media_ms: m ? velocidad(m.metros, m.segundos) : null,
+          }
+        })
+      let metros = 0
+      let segundos = 0
+      let nTramos = 0
+      for (const m of medido.values()) {
+        metros += m.metros
+        segundos += m.segundos
+        nTramos += m.tramos
+      }
       const { carriles: _carriles, ...base } = aDominio({ ...f, nadadores: [] })
       return {
         ...base,
-        carriles: r ? [...r.carriles].sort((a, b) => a - b) : [],
-        tramos: r?.tramos ?? 0,
-        distancia_m: r ? Math.round(r.metros * 100) / 100 : 0,
-        velocidad_media_ms: r && r.segundos > 0 ? Math.round((r.metros / r.segundos) * 1000) / 1000 : null,
+        carriles: [...medido.keys()].sort((a, b) => a - b),
+        tramos: nTramos,
+        distancia_m: Math.round(metros * 100) / 100,
+        velocidad_media_ms: velocidad(metros, segundos),
+        por_carril,
       }
     })
   }

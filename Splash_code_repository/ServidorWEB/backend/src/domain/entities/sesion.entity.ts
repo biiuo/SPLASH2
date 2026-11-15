@@ -55,14 +55,28 @@ export type Sesion = {
   fin: string | null
 }
 
+/** Lo medido en un carril de una sesión (una fila del historial: cada nadador por separado, sin promediar con los demás). */
+export type ResumenCarril = {
+  carril: number
+  /** Nombre del nadador de ese carril. null = carril sin nadador asignado. */
+  nadador: string | null
+  tramos: number
+  distancia_m: number
+  /** Distancia / tiempo de los tramos de ESE carril. null si no hubo tramos. */
+  velocidad_media_ms: number | null
+}
+
 /** Una sesión con el resumen de lo que se midió (para el historial). */
 export type ResumenSesion = Omit<Sesion, 'carriles'> & {
   /** Carriles en los que se midió algo. */
   carriles: number[]
+  /** Totales de toda la sesión (suma de todos los carriles). */
   tramos: number
   distancia_m: number
   /** Distancia total / tiempo total de los tramos. null si no hubo tramos. */
   velocidad_media_ms: number | null
+  /** Lo mismo, carril por carril (ordenado por carril): para mostrar a cada nadador por separado. */
+  por_carril: ResumenCarril[]
 }
 
 export type EventoGuardado = {

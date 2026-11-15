@@ -130,12 +130,18 @@ export class SesionesController {
   @PermiteServicio()
   @ApiOperation({
     summary: 'Mi sesión en curso',
-    description: 'La sesión en curso de quien pregunta (la que inició, o en la que tiene un carril), o `null`.',
+    description:
+      'La sesión en curso de quien pregunta (la que inició, o en la que tiene un carril), o `null`. Vale también para un ' +
+      'administrador: es la suya, no la de otro (todas las que están en curso: `GET /sesiones/activas`). El servidor de IA ' +
+      'recibe la más reciente de cualquiera.',
   })
   @ApiOkResponse({ description: 'La sesión, o `null`.' })
   @ApiServiceUnavailableResponse(SIN_BASE)
   async obtenerActiva(@Solicitante() s: TipoSolicitante) {
-    return (await this.activa.execute(visibilidadDe(s))) ?? null
+    // "Mi sesión": también para un administrador. Con `visibilidadDe` (que a un administrador le devuelve null = ve todas),
+    // su panel mostraba la sesión de cualquier otra persona como si fuera la suya y le ocultaba la elección de carriles.
+    const persona = s?.tipo === 'usuario' ? s.id : null // el servidor de IA (sin persona) sigue viendo cualquiera
+    return (await this.activa.execute(persona)) ?? null
   }
 
   @Get('activas')
