@@ -76,7 +76,7 @@ function avisarSinSesion() {
 
 export const api = {
   // ---- cuenta (el token lo guarda la web en una cookie que el navegador no puede leer) ----
-  registrarse: (d: { email: string; nombre: string; contrasena: string; rol: 'nadador' | 'entrenador'; telefono?: string | null }) =>
+  registrarse: (d: { email: string; nombre: string; contrasena: string; telefono?: string | null }) =>
     pedir<{ usuario: Usuario }>('auth/registro', 'POST', d),
   ingresar: (d: { email: string; contrasena: string }) => pedir<{ usuario: Usuario }>('auth/ingresar', 'POST', d),
   yo: () => pedir<Usuario>('auth/yo'),

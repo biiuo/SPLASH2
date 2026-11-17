@@ -4,8 +4,8 @@ export type Rol = 'administrador' | 'entrenador' | 'nadador'
 
 export const ROLES: readonly Rol[] = ['administrador', 'entrenador', 'nadador']
 
-/** Los roles que una persona puede elegir al registrarse. Un administrador lo crea otro administrador (o el arranque). */
-export const ROLES_REGISTRABLES: readonly Rol[] = ['entrenador', 'nadador']
+/** Rol inicial de una cuenta creada mediante registro público. */
+export const ROL_REGISTRO_PUBLICO: Rol = 'nadador'
 
 export type Usuario = {
   id: string

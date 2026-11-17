@@ -56,7 +56,7 @@ export function useCuenta() {
       fijar({ usuario, cargando: false })
       return usuario
     },
-    async registrarse(datos: { email: string; nombre: string; contrasena: string; rol: 'nadador' | 'entrenador'; telefono?: string | null }) {
+    async registrarse(datos: { email: string; nombre: string; contrasena: string; telefono?: string | null }) {
       const { usuario } = await api.registrarse(datos)
       fijar({ usuario, cargando: false })
       return usuario

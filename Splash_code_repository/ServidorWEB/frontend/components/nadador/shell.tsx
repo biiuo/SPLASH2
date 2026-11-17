@@ -56,7 +56,7 @@ export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[
   }
 
   const logo = (
-    <Link href={inicio} className="flex items-center gap-2.5">
+    <Link href="/" aria-label="SafeSplash, volver al inicio" className="flex items-center gap-2.5">
       <span className="flex size-9 items-center justify-center rounded-xl bg-[#1D63ED] text-white shadow-lg shadow-[#1D63ED]/40"><Waves className="size-5" /></span>
       <span className="font-bold text-white">Safe<span className="text-[#7DD3FC]">Splash</span></span>
     </Link>

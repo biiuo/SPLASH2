@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { ErrorApi } from '@/lib/api'
-import { NOMBRE_ROL, useCuenta } from '@/lib/cuenta'
+import { useCuenta } from '@/lib/cuenta'
 
 interface AuthScreenProps {
   mode: 'login' | 'signup'
@@ -31,7 +31,6 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
   const [contrasena, setContrasena] = useState('')
   const [confirmarContrasena, setConfirmarContrasena] = useState('')
   const [nombre, setNombre] = useState('')
-  const [rol, setRol] = useState<'nadador' | 'entrenador'>('nadador')
   const [telefono, setTelefono] = useState('')
 
   const [showPassword, setShowPassword] = useState(false)
@@ -74,7 +73,6 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
           email: email.trim(),
           nombre: nombre.trim(),
           contrasena,
-          rol,
           telefono: telefono.trim() || null,
         })
       }
@@ -104,7 +102,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
       </div>
 
       {/* 2. Tarjeta flotante Soft Translúcida */}
-      <section className="relative z-10 w-full max-w-[1080px] rounded-[30px] overflow-hidden shadow-[0_32px_90px_rgba(2,12,27,0.72)] border border-white/25 bg-[#082644]/40">
+      <section className={`relative z-10 w-full ${isLogin ? 'max-w-[1080px]' : 'max-w-[920px]'} rounded-[30px] overflow-hidden shadow-[0_32px_90px_rgba(2,12,27,0.72)] border border-white/25 bg-[#082644]/40`}>
         {/* Fotografía estática nítida dentro de la tarjeta */}
         <img
           src="/images/piscina/foto-piscina-3.jpeg"
@@ -113,7 +111,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#041629]/85 via-[#041629]/20 to-[#041629]/45 pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row min-h-[640px]">
+        <div className={`relative z-10 flex flex-col md:flex-row ${isLogin ? 'min-h-[640px]' : 'min-h-[560px]'}`}>
           {/* COLUMNA IZQUIERDA: Ventana limpia al agua + Bienvenida */}
           <div className="w-full md:w-[42%] p-8 sm:p-11 flex flex-col justify-between min-h-[210px] md:min-h-full">
             <button
@@ -157,7 +155,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
           </div>
 
           {/* COLUMNA DERECHA: Panel Soft Translúcido con curvatura S-Wave limpia */}
-          <div className="translucent-wave-pane w-full md:w-[60%] md:-ml-[2%] px-8 sm:px-14 md:pl-24 md:pr-14 py-10 sm:py-12 flex flex-col justify-center relative">
+          <div className={`translucent-wave-pane w-full md:w-[60%] md:-ml-[2%] ${isLogin ? 'px-8 sm:px-14 md:pl-24 md:pr-14 py-10 sm:py-12' : 'px-6 sm:px-10 md:pl-20 md:pr-10 py-7 sm:py-8'} flex flex-col justify-center relative`}>
             <div className="w-full max-w-[420px] mx-auto">
               {/* Botón Volver para móvil */}
               <button
@@ -179,7 +177,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
                 </p>
               </div>
 
-              <form onSubmit={enviar} className="space-y-4" noValidate>
+              <form onSubmit={enviar} className={isLogin ? 'space-y-4' : 'space-y-3'} noValidate>
                 {/* CAMPOS SIGN UP */}
                 {!isLogin && (
                   <div>
@@ -329,34 +327,6 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
                           <Eye className="w-4 h-4" />
                         )}
                       </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* SELECTOR DE ROL (SIGN UP) */}
-                {!isLogin && (
-                  <div>
-                    <label className="block text-xs font-semibold text-sky-100/90 mb-1.5 ml-3">
-                      Soy
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['nadador', 'entrenador'] as const).map((r) => {
-                        const active = rol === r
-                        return (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => setRol(r)}
-                            className={`py-2.5 px-4 rounded-full text-xs font-bold transition flex items-center justify-center gap-2 border cursor-pointer ${
-                              active
-                                ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-md shadow-sky-400/25'
-                                : 'bg-[#0d2847] text-white border-white/20 hover:bg-[#113258]'
-                            }`}
-                          >
-                            <span>{NOMBRE_ROL[r]}</span>
-                          </button>
-                        )
-                      })}
                     </div>
                   </div>
                 )}
