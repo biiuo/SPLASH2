@@ -258,3 +258,43 @@
   background-color: #06203d;
 }
 
+
+/* ------------------------------------------------------------------ paneles con sesión iniciada
+   Cada rol tiene su color de acento (el resto de la paleta es la de la portada: azul marino y celestes).
+   Los componentes usan var(--acento) & co.; el marco del módulo pone data-tema="nadador|entrenador|administrador". */
+[data-tema] {
+  --marino-1: #041629;
+  --marino-2: #082644;
+  --marino-3: #113258;
+  --celeste: #38bdf8;
+  --celeste-claro: #bae6fd;
+  --acento: #1d63ed;
+  --acento-2: #38bdf8;
+  --acento-suave: #eff6ff;
+  --acento-texto: #1d4ed8;
+}
+[data-tema='nadador'] {
+  --acento: #0e7490;
+  --acento-2: #22d3ee;
+  --acento-suave: #ecfeff;
+  --acento-texto: #0e7490;
+}
+[data-tema='entrenador'] {
+  --acento: #1d63ed;
+  --acento-2: #38bdf8;
+  --acento-suave: #eff6ff;
+  --acento-texto: #1d4ed8;
+}
+[data-tema='administrador'] {
+  --acento: #4f46e5;
+  --acento-2: #06b6d4;
+  --acento-suave: #eef2ff;
+  --acento-texto: #4338ca;
+}
+/* fondo del contenido: claro, con un brillo celeste arriba */
+.panel-fondo {
+  background:
+    radial-gradient(900px 380px at 85% -120px, color-mix(in srgb, var(--acento-2) 22%, transparent), transparent 70%),
+    radial-gradient(700px 300px at 0% -100px, color-mix(in srgb, var(--acento) 12%, transparent), transparent 70%),
+    #f4f8fd;
+}

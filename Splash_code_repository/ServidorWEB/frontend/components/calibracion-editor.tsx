@@ -33,7 +33,7 @@ function PantallaEstado({ mensaje, error = false }: { mensaje: string; error?: b
   return (
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 sm:p-8">
       <div className="mx-auto max-w-3xl">
-        <Link href="/" className="text-sm font-medium text-blue-600 hover:underline">← Volver al inicio</Link>
+        <Link href="/admin" className="text-sm font-medium text-blue-600 hover:underline">← Volver al inicio</Link>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">Homografía de la piscina</h1>
         <p className={`mt-6 rounded-xl px-4 py-3 text-sm ${error ? 'bg-rose-50 text-rose-800' : 'bg-slate-100 text-slate-600'}`}>{mensaje}</p>
       </div>
@@ -67,9 +67,15 @@ function CalibracionPantalla({
   const [video, setVideo] = useState<{ duracion: number; t: number } | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [cargandoFrame, setCargandoFrame] = useState(false)
+  const [cargandoArchivo, setCargandoArchivo] = useState(false)
+  const [errorArchivo, setErrorArchivo] = useState<string | null>(null)
   const [cargado, setCargado] = useState(false)
   const [nombrePosicion, setNombrePosicion] = useState('') // para reconocer esta posición de la cámara en el historial
   const [guardadaId, setGuardadaId] = useState<string | null>(null)
+  // la calibración activa (si hay) y su imagen: al abrir se elige si partir de ella o crear una nueva
+  const [activa, setActiva] = useState<Awaited<ReturnType<typeof api.calibracionActiva>>>(null)
+  const [imagenActiva, setImagenActiva] = useState<HTMLCanvasElement | null>(null)
+  const [eleccion, setEleccion] = useState<'pendiente' | 'activa' | 'nueva'>('pendiente')
   // puntos sobre las corcheras: se marcan en cualquier lugar de su largo y afirman la calibración
   const [marcasCuerda, setMarcasCuerda] = useState<MarcaCuerda[]>([])
   const [modo, setModo] = useState<'nodos' | 'cuerdas'>('nodos')
@@ -126,26 +132,25 @@ function CalibracionPantalla({
   }, [marcas, omitidos, marcasCuerda, tam])
 
   // ---- al abrir: la calibración activa, desde la base de datos ----
-  // (se parte de lo guardado; si la cámara se movió, se corrigen los puntos o se empieza de nuevo y se guarda otra)
+  // No se aplica sola: se pregunta si partir de ella (corregir sus puntos) o crear una nueva desde cero.
   useEffect(() => {
     let vigente = true
     api
       .calibracionActiva()
-      .then((c) => {
-        if (!vigente || !c) return
-        setMarcas(c.puntos.map((p): Marca => ({ id: p.id, px: p.px })))
-        setMarcasCuerda((c.cuerdas ?? []).map((q): MarcaCuerda => ({ cuerda: q.cuerda, px: q.px })))
-        setOmitidos(c.omitidos ?? [])
-        if (c.llegada) setLlegada(c.llegada)
-        setTam(c.image_size)
-        // y la imagen sobre la que se marcó, si se guardó (así no hay que volver a subirla)
-        return api.imagenDeCalibracion(c.id).then((img) => {
-          if (!vigente || !img) return
-          setBase((actual) => actual ?? img)
-        })
+      .then(async (c) => {
+        if (!vigente) return
+        setActiva(c)
+        if (!c) {
+          setEleccion('nueva') // no hay activa: no hay nada que elegir
+          return
+        }
+        // la imagen sobre la que se marcó, si se guardó (así no hay que volver a subirla)
+        const img = await api.imagenDeCalibracion(c.id).catch(() => null)
+        if (vigente) setImagenActiva(img)
       })
       .catch(() => {
         /* sin calibración o sin base: se empieza vacío */
+        if (vigente) setEleccion('nueva')
       })
       .finally(() => vigente && setCargado(true))
     return () => {
@@ -153,9 +158,55 @@ function CalibracionPantalla({
     }
   }, [])
 
+  /** Parte de la calibración activa: sus puntos, su imagen y su nombre (al guardar se crea otra con los cambios). */
+  function usarActiva() {
+    if (!activa) return
+    soltarVideo()
+    setVideo(null)
+    setMarcas(activa.puntos.map((p): Marca => ({ id: p.id, px: p.px })))
+    setMarcasCuerda((activa.cuerdas ?? []).map((q): MarcaCuerda => ({ cuerda: q.cuerda, px: q.px })))
+    setOmitidos(activa.omitidos ?? [])
+    setLlegada(activa.llegada ?? { inicio_m: null, fin_m: null })
+    setTam(activa.image_size)
+    setBase(imagenActiva)
+    setNombrePosicion(activa.nombre ?? '')
+    setObjetivo(null)
+    setModo('nodos')
+    setGuardadaId(null)
+    setAviso(null)
+    setErrorArchivo(null)
+    setEleccion('activa')
+  }
+
+  /** Empieza una calibración nueva desde cero: sin puntos ni imagen (la activa sigue guardada en el historial). */
+  function crearNueva() {
+    soltarVideo()
+    setVideo(null)
+    setMarcas([])
+    setMarcasCuerda([])
+    setOmitidos([])
+    setLlegada({ inicio_m: null, fin_m: null })
+    setTam(null)
+    setBase(null)
+    setNombrePosicion('')
+    setObjetivo(null)
+    setModo('nodos')
+    setGuardadaId(null)
+    setAviso(null)
+    setErrorArchivo(null)
+    setEleccion('nueva')
+  }
+
   // ---- cargar el frame de referencia ----
+  // los callbacks del video viven más que el render en que se crearon: leen el tamaño y las marcas actuales de acá
+  const actual = useRef({ tam, marcas, marcasCuerda })
+  actual.current = { tam, marcas, marcasCuerda }
+
   function fijarBase(c: HTMLCanvasElement) {
     const nuevo: [number, number] = [c.width, c.height]
+    const { tam, marcas, marcasCuerda } = actual.current
+    // se actualiza ya, por si llega otro frame antes del próximo render (no reescalar dos veces)
+    actual.current = { ...actual.current, tam: nuevo }
     if (tam && (marcas.length > 0 || marcasCuerda.length > 0) && (tam[0] !== nuevo[0] || tam[1] !== nuevo[1])) {
       const sx = nuevo[0] / tam[0]
       const sy = nuevo[1] / tam[1]
@@ -169,23 +220,49 @@ function CalibracionPantalla({
     setBase(c)
   }
 
+  /** El video anterior (si había) ya no se usa: se suelta para no retener cientos de MB. */
+  function soltarVideo() {
+    const anterior = videoRef.current
+    if (!anterior) return
+    anterior.onseeked = anterior.onloadeddata = anterior.onerror = null
+    URL.revokeObjectURL(anterior.src)
+    anterior.removeAttribute('src')
+    anterior.load()
+    videoRef.current = null
+  }
+
   function cargarImagenOVideo(file: File) {
+    setErrorArchivo(null)
+    setCargandoArchivo(true)
+    soltarVideo()
     const url = URL.createObjectURL(file)
-    if (file.type.startsWith('video/')) {
+    const fallo = (motivo: string) => {
+      URL.revokeObjectURL(url)
+      setCargandoArchivo(false)
+      setErrorArchivo(motivo)
+    }
+    const esVideo = file.type.startsWith('video/') || /\.(mp4|m4v|mov|webm|mkv|avi)$/i.test(file.name)
+    if (esVideo) {
       const v = document.createElement('video')
       v.muted = true
+      v.playsInline = true
       v.preload = 'auto'
-      v.onloadedmetadata = () => {
-        setVideo({ duracion: v.duration, t: 0 })
-        v.currentTime = 0
-      }
-      v.onseeked = () => {
+      const capturar = () => {
+        if (!v.videoWidth || !v.videoHeight) return
         const c = document.createElement('canvas')
         c.width = v.videoWidth
         c.height = v.videoHeight
         c.getContext('2d')?.drawImage(v, 0, 0)
+        setCargandoArchivo(false)
         fijarBase(c)
       }
+      v.onloadedmetadata = () => setVideo({ duracion: v.duration, t: 0 })
+      // el primer frame: 'loadeddata' llega siempre; 'seeked' solo cuando se mueve el control del instante
+      // (pedir currentTime = 0 estando ya en 0 no siempre dispara 'seeked', y entonces la imagen no cambiaba)
+      v.onloadeddata = capturar
+      v.onseeked = capturar
+      v.onerror = () =>
+        fallo('El navegador no puede abrir este video (formato o códec no soportado). Probá con un MP4 H.264 o sacá una foto del video.')
       v.src = url
       videoRef.current = v
     } else {
@@ -197,8 +274,10 @@ function CalibracionPantalla({
         c.height = img.naturalHeight
         c.getContext('2d')?.drawImage(img, 0, 0)
         URL.revokeObjectURL(url)
+        setCargandoArchivo(false)
         fijarBase(c)
       }
+      img.onerror = () => fallo('El navegador no puede abrir esta imagen (probá con JPG o PNG).')
       img.src = url
     }
   }
@@ -494,6 +573,45 @@ function CalibracionPantalla({
     }
   }
 
+  if (!cargado) return <PantallaEstado mensaje="Cargando…" />
+  if (eleccion === 'pendiente' && activa) {
+    const n = activa.puntos.length
+    return (
+      <main className="min-h-screen bg-slate-50 p-5 text-slate-950 sm:p-8">
+        <div className="mx-auto max-w-3xl">
+          <Link href="/admin" className="text-sm font-medium text-blue-600 hover:underline">← Volver al inicio</Link>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight">Homografía de la piscina</h1>
+          <p className="mt-2 text-slate-500">Hay una calibración activa. ¿Querés partir de ella o crear una nueva?</p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <button
+              onClick={usarActiva}
+              className="rounded-2xl border-2 border-blue-500 bg-white p-5 text-left transition hover:bg-blue-50"
+            >
+              <p className="font-semibold text-blue-700">Usar la calibración activa</p>
+              <p className="mt-1 text-sm text-slate-600">
+                {activa.nombre ?? 'Sin nombre'} · {n} puntos
+                {activa.creada ? ` · ${new Date(activa.creada).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+              </p>
+              <p className="mt-2 text-xs text-slate-400">
+                Se cargan sus puntos{imagenActiva ? ' y su imagen' : ''} para revisarlos o corregirlos. Al guardar se crea una
+                posición nueva con los cambios.
+              </p>
+            </button>
+            <button
+              onClick={crearNueva}
+              className="rounded-2xl border-2 border-slate-200 bg-white p-5 text-left transition hover:bg-slate-50"
+            >
+              <p className="font-semibold">Crear una calibración nueva</p>
+              <p className="mt-1 text-sm text-slate-600">Desde cero, con otra imagen o video.</p>
+              <p className="mt-2 text-xs text-slate-400">
+                Para cuando la cámara se movió. La activa queda guardada en «Calibraciones guardadas».
+              </p>
+            </button>
+          </div>
+        </div>
+      </main>
+    )
+  }
   if (!ev) return <PantallaEstado mensaje={errorApi ?? 'Calculando…'} error={errorApi !== null} />
   const calidad = ev.cruzado_m ?? ev.rmse_m
 
@@ -501,7 +619,7 @@ function CalibracionPantalla({
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 sm:p-8">
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-medium text-blue-600">
-          <Link href="/" className="hover:underline">← Volver al inicio</Link>
+          <Link href="/admin" className="hover:underline">← Volver al inicio</Link>
           <Link href="/zonas" className="hover:underline">Zonas de análisis</Link>
           <Link href="/configuracion" className="hover:underline">Configuración de la piscina y la cámara</Link>
           <Link href="/calibracion/historial" className="hover:underline">Calibraciones guardadas</Link>
@@ -626,6 +744,23 @@ function CalibracionPantalla({
           <div className="flex flex-col gap-4">
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <h2 className="font-semibold">Imagen de referencia</h2>
+              {activa && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {eleccion === 'activa' ? `Partiendo de la activa (${activa.nombre ?? 'sin nombre'}).` : 'Calibración nueva.'}{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const hay = marcas.length > 0 || marcasCuerda.length > 0 || base !== null
+                      if (hay && !window.confirm('Se pierden los puntos marcados sin guardar. ¿Seguir?')) return
+                      if (eleccion === 'activa') crearNueva()
+                      else usarActiva()
+                    }}
+                    className="font-medium text-blue-600 hover:underline"
+                  >
+                    {eleccion === 'activa' ? 'Crear una nueva' : 'Usar la activa'}
+                  </button>
+                </p>
+              )}
               <button
                 type="button"
                 onClick={usarFrameDeCamara}
@@ -638,9 +773,15 @@ function CalibracionPantalla({
               <input
                 type="file"
                 accept="image/*,video/*"
-                onChange={(e) => e.target.files?.[0] && cargarImagenOVideo(e.target.files[0])}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) cargarImagenOVideo(f)
+                  e.target.value = '' // así se puede volver a elegir el mismo archivo
+                }}
                 className="mt-1 w-full text-sm"
               />
+              {cargandoArchivo && <p className="mt-2 text-xs text-slate-500">Cargando el archivo…</p>}
+              {errorArchivo && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{errorArchivo}</p>}
               {tam && <p className="mt-2 text-xs text-slate-400">Tamaño: {tam[0]} × {tam[1]} px</p>}
             </div>
 

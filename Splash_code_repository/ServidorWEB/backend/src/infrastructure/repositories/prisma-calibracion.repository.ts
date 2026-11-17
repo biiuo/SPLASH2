@@ -49,6 +49,15 @@ export class PrismaCalibracionRepository implements CalibracionRepository {
     })
   }
 
+  async desactivar(): Promise<void> {
+    await this.prisma.calibracion.updateMany({ where: { activa: true }, data: { activa: false } })
+  }
+
+  async eliminar(id: string): Promise<boolean> {
+    const { count } = await this.prisma.calibracion.deleteMany({ where: { id } })
+    return count > 0
+  }
+
   async actualizar(id: string, cambios: ExtrasCalibracion): Promise<CalibracionGuardada | null> {
     const r = await this.prisma.calibracion.updateManyAndReturn({ where: { id }, data: CalibracionMapper.toPrismaUpdate(cambios), omit: SIN_IMAGEN })
     return r[0] ? CalibracionMapper.toDomain(r[0]) : null

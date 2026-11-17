@@ -7,6 +7,7 @@ import {
   EyeOff,
   Lock,
   Mail,
+  Phone,
   ShieldCheck,
   User,
   Waves,
@@ -31,6 +32,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
   const [confirmarContrasena, setConfirmarContrasena] = useState('')
   const [nombre, setNombre] = useState('')
   const [rol, setRol] = useState<'nadador' | 'entrenador'>('nadador')
+  const [telefono, setTelefono] = useState('')
 
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -73,6 +75,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
           nombre: nombre.trim(),
           contrasena,
           rol,
+          telefono: telefono.trim() || null,
         })
       }
     } catch (err) {
@@ -230,6 +233,30 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
                     />
                   </div>
                 </div>
+
+                {/* TELÉFONO (opcional, solo al crear la cuenta) */}
+                {!isLogin && (
+                  <div>
+                    <label htmlFor="authPhone" className="block text-xs font-semibold text-sky-100/90 mb-1.5 ml-3">
+                      Teléfono <span className="font-normal text-sky-200/70">(opcional)</span>
+                    </label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-sky-200/70">
+                        <Phone className="w-4 h-4" />
+                      </span>
+                      <input
+                        id="authPhone"
+                        name="phone"
+                        type="tel"
+                        value={telefono}
+                        onChange={(e) => setTelefono(e.target.value)}
+                        autoComplete="tel"
+                        placeholder="+57 300 000 0000"
+                        className="soft-pill-input w-full rounded-full pl-11 pr-4 py-3 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* CONTRASEÑA */}
                 <div>

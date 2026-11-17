@@ -56,10 +56,14 @@ export function useCuenta() {
       fijar({ usuario, cargando: false })
       return usuario
     },
-    async registrarse(datos: { email: string; nombre: string; contrasena: string; rol: 'nadador' | 'entrenador' }) {
+    async registrarse(datos: { email: string; nombre: string; contrasena: string; rol: 'nadador' | 'entrenador'; telefono?: string | null }) {
       const { usuario } = await api.registrarse(datos)
       fijar({ usuario, cargando: false })
       return usuario
+    },
+    /** Después de cambiar los datos propios: la pantalla usa el usuario nuevo. */
+    actualizado(usuario: Usuario) {
+      fijar({ usuario, cargando: false })
     },
     async salir() {
       await api.salir()

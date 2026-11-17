@@ -7,9 +7,9 @@ import {
   NoEncontradoException,
   ValidacionException,
 } from '../../exceptions/aplicacion.exceptions'
-import { normalizarEmail, problemasDeCuenta } from './validar-cuenta'
+import { normalizarEmail, problemasDeCuenta, telefonoDe } from './validar-cuenta'
 
-export type RegistroEntrada = { email: string; nombre: string; contrasena: string; rol: Rol }
+export type RegistroEntrada = { email: string; nombre: string; contrasena: string; rol: Rol; telefono?: string | null }
 export type IngresoEntrada = { email: string; contrasena: string }
 export type SesionUsuario = { token: string; usuario: Usuario }
 
@@ -24,6 +24,12 @@ export class RegistrarseUseCase {
   async execute(entrada: RegistroEntrada): Promise<SesionUsuario> {
     const errores = problemasDeCuenta(entrada ?? {})
     if (!ROLES_REGISTRABLES.includes(entrada?.rol)) errores.push(`El rol tiene que ser ${ROLES_REGISTRABLES.join(' o ')}.`)
+    let telefono: string | null | undefined
+    try {
+      telefono = telefonoDe(entrada?.telefono)
+    } catch (e) {
+      errores.push((e as Error).message)
+    }
     if (errores.length > 0) throw new ValidacionException('Los datos de la cuenta no son válidos.', errores)
 
     const email = normalizarEmail(entrada.email)
@@ -34,6 +40,7 @@ export class RegistrarseUseCase {
       nombre: entrada.nombre.trim(),
       rol: entrada.rol,
       passwordHash: await this.cifrador.cifrar(entrada.contrasena),
+      telefono: telefono ?? null,
     })
     return { token: await this.tokens.emitir({ id: usuario.id, rol: usuario.rol, nombre: usuario.nombre }), usuario }
   }
@@ -67,6 +74,56 @@ export class ObtenerPerfilUseCase {
     const u = await this.usuarios.obtener(id)
     if (!u) throw new NoEncontradoException('No existe ese usuario.')
     return u
+  }
+}
+
+/**
+ * Cambiar los datos propios permitidos: el nombre y el teléfono. El correo, el rol y el estado de la cuenta no se
+ * tocan desde acá. Devuelve un token nuevo: el viejo lleva el nombre anterior.
+ */
+export class ActualizarPerfilUseCase {
+  constructor(
+    private readonly usuarios: UsuarioRepository,
+    private readonly tokens: EmisorTokens,
+  ) {}
+
+  async execute(id: string, entrada: { nombre?: unknown; telefono?: unknown }): Promise<SesionUsuario> {
+    let nombre: string | undefined
+    if (entrada?.nombre !== undefined) {
+      nombre = typeof entrada.nombre === 'string' ? entrada.nombre.trim() : ''
+      if (nombre.length < 1 || nombre.length > 80) throw new ValidacionException('El nombre tiene que tener de 1 a 80 letras.')
+    }
+    let telefono: string | null | undefined
+    try {
+      telefono = telefonoDe(entrada?.telefono)
+    } catch (e) {
+      throw new ValidacionException((e as Error).message)
+    }
+    if (nombre === undefined && telefono === undefined) throw new ValidacionException('No hay nada que cambiar.')
+    const usuario = await this.usuarios.actualizar(id, { nombre, telefono })
+    if (!usuario) throw new NoEncontradoException('No existe ese usuario.')
+    return { token: await this.tokens.emitir({ id: usuario.id, rol: usuario.rol, nombre: usuario.nombre }), usuario }
+  }
+}
+
+/** Cambiar la contraseña propia: hay que dar la actual (si alguien encuentra la sesión abierta, no puede cambiarla). */
+export class CambiarContrasenaUseCase {
+  constructor(
+    private readonly usuarios: UsuarioRepository,
+    private readonly cifrador: CifradorContrasenas,
+  ) {}
+
+  async execute(id: string, entrada: { actual?: unknown; nueva?: unknown }): Promise<{ ok: true }> {
+    const actual = typeof entrada?.actual === 'string' ? entrada.actual : ''
+    const hash = await this.usuarios.obtenerHash(id)
+    if (!hash) throw new NoEncontradoException('No existe ese usuario.')
+    if (!actual || !(await this.cifrador.coincide(actual, hash))) throw new ValidacionException('La contraseña actual no es correcta.')
+    // mismas reglas que al crear la cuenta (largo mínimo y máximo)
+    const errores = problemasDeCuenta({ email: 'x@x.xx', nombre: 'x', contrasena: entrada?.nueva })
+    if (errores.length) throw new ValidacionException('La contraseña nueva no es válida.', errores)
+    if (entrada.nueva === actual) throw new ValidacionException('La contraseña nueva tiene que ser distinta de la actual.')
+    await this.usuarios.cambiarHash(id, await this.cifrador.cifrar(entrada.nueva as string))
+    return { ok: true }
   }
 }
 

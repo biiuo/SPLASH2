@@ -1,45 +1,23 @@
 # SafeSplash: un contenedor por servicio.
 #
-#   docker compose up -d --build                       # frontend + backend + base de datos + relé + servidor de IA
-#   docker compose --profile phone up -d               # además el streaming WebSocket para el celular
-#   docker compose --profile demo up -d                # además una cámara simulada con ./videos/demo.mp4
+#   docker compose -f docker-compose.yml up -d --build # frontend + backend + base externa + relé + IA
+#   docker compose -f docker-compose.yml --profile phone up -d  # además el streaming WebSocket
+#   docker compose -f docker-compose.yml --profile demo up -d   # además una cámara simulada
+#   docker compose -f docker-compose.dev.yml up --watch         # desarrollo con base local
 #
 # Antes: copiá .env.example como .env y completá los valores. Explicación de volúmenes en docs/Docker.md.
 
 name: safesplash
 
 services:
-  # ---------------------------------------------------------------- base de datos
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-safesplash}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definí POSTGRES_PASSWORD en .env}
-      POSTGRES_DB: ${POSTGRES_DB:-safesplash}
-    volumes:
-      - pgdata:/var/lib/postgresql/data            # volumen con nombre: los datos sobreviven a "down"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    ports:
-      - "127.0.0.1:5432:5432"   # solo para conectarte vos desde tu PC; borralo en producción
-    networks: [backend]
-
   # ---------------------------------------------------------------- migraciones (Prisma)
   # Crea o actualiza las tablas antes de que arranque el backend, y termina. Se vuelve a correr en cada "up".
   migraciones:
     build:
       context: ./ServidorWEB/backend
       target: migraciones
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
-      # Base externa (Supabase, Neon...): poner DATABASE_URL en .env. Si no, la del contenedor db.
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-safesplash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-safesplash}}
+      DATABASE_URL: ${DATABASE_URL:?Definí DATABASE_URL en .env}
     restart: "no"
     networks: [backend]
 
@@ -51,8 +29,7 @@ services:
       migraciones:
         condition: service_completed_successfully
     environment:
-      # Base externa (Supabase, Neon...): poner DATABASE_URL en .env. Si no, la del contenedor db.
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-safesplash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-safesplash}}
+      DATABASE_URL: ${DATABASE_URL:?Definí DATABASE_URL en .env}
       PORT: "3001"
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?Definí JWT_SECRET en .env (al menos 32 caracteres)}
@@ -143,16 +120,15 @@ services:
     volumes:
       - ./videos:/videos:ro   # carpeta de tu PC con el video de prueba, solo lectura
     command: >
-      -re -stream_loop -1 -i /videos/${DEMO_VIDEO:-demo.mp4}
+      -re -stream_loop -1 -ss ${DEMO_INICIO:-0} -i /videos/${DEMO_VIDEO:-demo.mp4}
       -c:v libx264 -preset ultrafast -tune zerolatency
       -f rtsp -rtsp_transport tcp rtsp://mediamtx:8554/cam
     networks: [video]
 
 networks:
-  backend:   # web, base de datos y servidor de IA
+  backend:   # web, servidor de IA y conexión a la base externa
   video:     # cámara, relé, servidor de IA y streaming
 
 volumes:
-  pgdata:        # datos de PostgreSQL (lo más importante: usuarios, sesiones, métricas)
   torch_cache:   # YOLOv5 descargado por torch.hub (se puede borrar sin perder nada)
   ia_data:       # salidas del servidor de IA

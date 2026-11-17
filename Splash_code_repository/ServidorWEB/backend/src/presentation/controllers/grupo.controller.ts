@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common'
 import {
   ApiBody,
   ApiConflictResponse,
@@ -51,10 +51,21 @@ export class GrupoController {
 
   @Get('nadadores')
   @Roles(...ENTRENAN)
-  @ApiOperation({ summary: 'Todos los nadadores', description: 'Los nadadores registrados y en cuáles de mis grupos están (`mis_grupos`).' })
+  @ApiOperation({
+    summary: 'Nadadores visibles',
+    description: 'Un entrenador ve solo a los nadadores de sus grupos (a uno nuevo lo agrega por correo); el administrador, a todos. `mis_grupos` = en cuáles de los grupos visibles está.',
+  })
   @ApiOkResponse({ description: '`[{ id, nombre, email, mis_grupos: [id] }]`' })
   todos(@Solicitante() s: TipoSolicitante) {
     return this.grupos.todos(persona(s))
+  }
+
+  @Get('buscar-nadadores')
+  @Roles(...ENTRENAN)
+  @ApiOperation({ summary: 'Sugerir nadadores', description: '`?q=` (3 letras o más): hasta 8 nadadores activos cuyo correo o nombre lo contiene. Para autocompletar al sumar a un grupo.' })
+  @ApiOkResponse({ description: '`[{ id, nombre, email }]`' })
+  sugerir(@Query('q') q?: string) {
+    return this.grupos.sugerir(q)
   }
 
   @Get('mios')
@@ -66,11 +77,14 @@ export class GrupoController {
 
   @Patch(':id')
   @Roles(...ENTRENAN)
-  @ApiOperation({ summary: 'Cambiar el nombre de un grupo' })
+  @ApiOperation({
+    summary: 'Cambiar un grupo',
+    description: '`{ nombre?, descripcion?, nivel?: principiante|intermedio|avanzado|competitivo, horario?: { dias: ["lun", ...], inicio: "06:00", fin: "07:30" } }`. null borra.',
+  })
   @ApiOkResponse({ description: 'El grupo.' })
   @ApiNotFoundResponse({ description: 'No existe ese grupo (o no es tuyo).' })
-  renombrar(@Param('id') id: string, @Body() cuerpo: { nombre?: unknown }, @Solicitante() s: TipoSolicitante) {
-    return this.grupos.renombrar(persona(s), id, cuerpo?.nombre)
+  actualizar(@Param('id') id: string, @Body() cuerpo: { nombre?: unknown; descripcion?: unknown; nivel?: unknown; horario?: unknown }, @Solicitante() s: TipoSolicitante) {
+    return this.grupos.actualizar(persona(s), id, cuerpo ?? {})
   }
 
   @Delete(':id')

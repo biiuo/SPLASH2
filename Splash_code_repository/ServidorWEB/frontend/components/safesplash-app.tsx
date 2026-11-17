@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 import { GrupoPanel } from '@/components/grupo-panel'
 import { HeroCarousel } from '@/components/hero-carousel'
@@ -48,6 +49,11 @@ export function SafeSplashApp() {
   if (view === 'login' || view === 'signup') {
     return <AuthScreen mode={view} onBack={() => setView('home')} onSignup={() => setView('signup')} onLogin={() => setView('login')} />
   }
+
+  // cada rol con su módulo: /nadador, /entrenador y /admin, cada uno con su menú lateral
+  if (view === 'panel' && cuenta.usuario?.rol === 'nadador') return <IrAlModulo a="/nadador" />
+  if (view === 'panel' && cuenta.usuario?.rol === 'administrador') return <IrAlModulo a="/admin" />
+  if (view === 'panel' && cuenta.usuario?.rol === 'entrenador') return <IrAlModulo a="/entrenador" />
 
   if (view === 'panel' && cuenta.usuario) {
     const esEntrenador = puedeCalibrar(cuenta.usuario)
@@ -102,6 +108,13 @@ export function SafeSplashApp() {
       </footer>
     </main>
   )
+}
+
+/** El nadador, el entrenador y el administrador tienen su propio módulo con menú lateral. */
+function IrAlModulo({ a }: { a: string }) {
+  const router = useRouter()
+  useEffect(() => router.replace(a), [router, a])
+  return <main className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Abriendo tu panel…</main>
 }
 
 function Step({ number, icon: Icon, title, copy }: { number: string; icon: typeof Activity; title: string; copy: string }) {
@@ -198,16 +211,6 @@ function TrainerDashboard() {
       <div className="mb-8">
         <p className="text-sm font-semibold text-blue-600">Vista general</p>
         <h2 className="mt-1 text-3xl font-semibold tracking-tight">Entrenamiento</h2>
-      </div>
-      <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 p-5">
-        <p className="text-sm font-semibold text-blue-800">Calibración del sistema</p>
-        <p className="mt-1 text-sm text-blue-700">Antes de la primera sesión, o si se mueve la cámara o el zoom.</p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Link href="/configuracion" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100">Piscina y cámara</Link>
-          <Link href="/calibracion" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100">Calibrar la homografía</Link>
-          <Link href="/zonas" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100">Zonas de análisis</Link>
-          <Link href="/calibracion/historial" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100">Calibraciones guardadas</Link>
-        </div>
       </div>
       <SesionPanel />
       <GrupoPanel />

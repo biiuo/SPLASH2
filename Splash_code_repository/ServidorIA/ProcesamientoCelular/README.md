@@ -74,7 +74,7 @@ Las `NEXT_PUBLIC_*` se leen al compilar o arrancar la web: después de cambiarla
 - **El modelo corre en el hilo de la página:** mientras procesa, la pantalla puede responder un poco más lento.
 - El celular necesita internet la primera vez (onnxruntime-web se baja del CDN).
 - `servidor_stream.py` no pide token: cualquiera en la red puede ver el video.
-- En Docker, `servidor_stream.py` es el servicio `stream-ws` (`docker compose --profile phone up -d`), y el modelo `.onnx`
+- En Docker, `servidor_stream.py` es el servicio `stream-ws` (`docker compose -f docker-compose.yml --profile phone up -d`), y el modelo `.onnx`
   tiene que estar en `ServidorWEB/frontend/public/modelo/` **antes** de construir la imagen de la web.
 
 ## Otros archivos

@@ -1,24 +1,28 @@
 'use client'
 
-import { Pencil, Plus, Search, Trash2, UserMinus, UserPlus, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, UserMinus, UserPlus, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { BuscadorNadador } from '@/components/buscador-nadador'
 import { ErrorApi, api } from '@/lib/api'
 import type { Grupo, NadadorDeLaLista } from '@/lib/tipos'
 
 /** Sin tildes ni mayúsculas, para buscar "sofia" y encontrar "Sofía". */
+const POR_PAGINA = 10
+
 const normal = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 /**
- * Los grupos del entrenador. Puede tener varios (por nivel, horario...) y un nadador puede estar en varios. Se elige un
- * grupo y, de la lista de TODOS los nadadores registrados, se agrega o se saca a cada uno.
+ * Los grupos del entrenador. Puede tener varios (por nivel, horario...) y un nadador puede estar en varios. El
+ * entrenador ve solo a los nadadores de sus grupos; a uno nuevo lo suma por el correo de su cuenta.
  */
-export function GrupoPanel() {
+export function GrupoPanel({ alCambiar }: { alCambiar?: () => void } = {}) {
   const [grupos, setGrupos] = useState<Grupo[] | null>(null)
   const [nadadores, setNadadores] = useState<NadadorDeLaLista[]>([])
   const [elegido, setElegido] = useState<string | null>(null)
   const [nuevo, setNuevo] = useState('')
   const [busqueda, setBusqueda] = useState('')
+  const [pagina, setPagina] = useState(1)
   const [ocupado, setOcupado] = useState(false)
   const [mensaje, setMensaje] = useState<{ ok: boolean; texto: string } | null>(null)
 
@@ -44,6 +48,7 @@ export function GrupoPanel() {
       await accion()
       setMensaje({ ok: true, texto: ok })
       await cargar()
+      alCambiar?.()
     } catch (e) {
       setMensaje({ ok: false, texto: e instanceof ErrorApi ? e.message : 'No se pudo hacer el cambio.' })
     } finally {
@@ -59,6 +64,9 @@ export function GrupoPanel() {
       .filter((n) => !q || normal(n.nombre).includes(q) || normal(n.email ?? '').includes(q))
       .sort((a, b) => Number(enGrupo(b)) - Number(enGrupo(a)) || a.nombre.localeCompare(b.nombre, 'es'))
   }, [nadadores, busqueda, grupo])
+  const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA))
+  const actual = Math.min(pagina, paginas)
+  const enPagina = lista.slice((actual - 1) * POR_PAGINA, actual * POR_PAGINA)
   const nombreGrupo = (id: string) => grupos?.find((g) => g.id === id)?.nombre ?? ''
 
   return (
@@ -69,7 +77,7 @@ export function GrupoPanel() {
         {grupos && <span className="text-sm text-slate-400">· {grupos.length}</span>}
       </div>
       <p className="mt-1 text-sm text-slate-500">
-        Armá tus grupos con los nadadores registrados. Al iniciar una sesión elegís de qué grupo es, o la dejás libre para cualquiera.
+        Armá tus grupos sumando nadadores por el correo de su cuenta. Solo ves a los nadadores de tus grupos. Al iniciar una sesión elegís de qué grupo es, o la dejás libre para cualquiera.
       </p>
 
       {/* grupos */}
@@ -141,14 +149,23 @@ export function GrupoPanel() {
             </div>
           </div>
 
+          <div className="mt-3">
+            <BuscadorNadador
+              excluir={grupo.nadadores.map((n) => n.id)}
+              deshabilitado={ocupado}
+              alElegir={(n) => hacer(() => api.agregarAGrupo(grupo.id, n.id), `${n.nombre} está ahora en "${grupo.nombre}".`)}
+              alEscribirCorreo={(c) => hacer(() => api.agregarAGrupoPorEmail(grupo.id, c), `Nadador agregado a "${grupo.nombre}".`)}
+            />
+          </div>
+
           <label className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 focus-within:border-blue-500">
             <Search className="size-4 text-slate-400" />
-            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar nadador por nombre o correo" className="flex-1 text-sm outline-none" aria-label="Buscar nadador" />
+            <input value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPagina(1) }} placeholder="Buscar nadador por nombre o correo" className="flex-1 text-sm outline-none" aria-label="Buscar nadador" />
           </label>
 
-          {nadadores.length === 0 && <p className="mt-3 text-sm text-slate-500">Todavía no hay nadadores registrados.</p>}
-          <ul className="mt-2 max-h-80 divide-y divide-slate-100 overflow-y-auto">
-            {lista.map((n) => {
+          {nadadores.length === 0 && <p className="mt-3 text-sm text-slate-500">Todavía no tenés nadadores en tus grupos: agregá el primero por su correo.</p>}
+          <ul className="mt-2 divide-y divide-slate-100">
+            {enPagina.map((n) => {
               const esta = n.mis_grupos.includes(grupo.id)
               const otros = n.mis_grupos.filter((id) => id !== grupo.id).map(nombreGrupo).filter(Boolean)
               return (
@@ -157,6 +174,7 @@ export function GrupoPanel() {
                     <p className="truncate text-sm font-medium">{n.nombre}</p>
                     <p className="truncate text-xs text-slate-400">
                       {n.email}
+                      {n.telefono && <span> · {n.telefono}</span>}
                       {otros.length > 0 && <span> · también en {otros.join(', ')}</span>}
                     </p>
                   </div>
@@ -181,6 +199,16 @@ export function GrupoPanel() {
               )
             })}
           </ul>
+          {lista.length > POR_PAGINA && (
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+              <span>{(actual - 1) * POR_PAGINA + 1}–{Math.min(actual * POR_PAGINA, lista.length)} de {lista.length}</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPagina(actual - 1)} disabled={actual <= 1} className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-50 disabled:opacity-40" aria-label="Página anterior"><ChevronLeft className="size-4" /></button>
+                <span>Página {actual} de {paginas}</span>
+                <button onClick={() => setPagina(actual + 1)} disabled={actual >= paginas} className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-50 disabled:opacity-40" aria-label="Página siguiente"><ChevronRight className="size-4" /></button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

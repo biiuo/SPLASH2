@@ -378,7 +378,7 @@ export function ZoneEditor() {
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 sm:p-8">
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-medium text-blue-600">
-          <Link href="/" className="hover:underline">← Volver al inicio</Link>
+          <Link href="/admin" className="hover:underline">← Volver al inicio</Link>
           <Link href="/calibracion" className="hover:underline">Calibración</Link>
           <Link href="/calibracion/historial" className="hover:underline">Posiciones de la cámara</Link>
         </div>

@@ -64,6 +64,16 @@ export type ResumenCarril = {
   distancia_m: number
   /** Distancia / tiempo de los tramos de ESE carril. null si no hubo tramos. */
   velocidad_media_ms: number | null
+  /** La cuenta del nadador de ese carril (null = sin nadador o nadador sin cuenta). */
+  usuario_id: string | null
+  /** De esos tramos, cuántos son estimados (no se veía al nadador). */
+  tramos_estimados: number
+  /** Largos completos (de pared a pared) y cuántos de ellos sin partes estimadas. */
+  largos: number
+  largos_medidos: number
+  /** Récords de la sesión, solo con largos medidos (null si no hubo ninguno). */
+  mejor_largo_s: number | null
+  velocidad_max_ms: number | null
 }
 
 /** Una sesión con el resumen de lo que se midió (para el historial). */

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <ConSesion roles={['entrenador', 'administrador']}>
+    <ConSesion roles={['administrador']}>
       <ZoneEditor />
     </ConSesion>
   )

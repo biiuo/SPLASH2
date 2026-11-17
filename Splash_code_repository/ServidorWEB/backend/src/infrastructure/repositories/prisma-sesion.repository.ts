@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common'
 
-import type { ResumenCarril, ResumenSesion, Sesion } from '../../domain/entities/sesion.entity'
+import type { EstadoSesion, ResumenCarril, ResumenSesion, Sesion } from '../../domain/entities/sesion.entity'
 import { ConflictoCarriles, type NuevaSesion, type SesionRepository } from '../../domain/repositories/sesion.repository'
 import { PrismaService } from '../persistence/prisma.service'
 import type { Prisma, Sesion as FilaSesion } from '../persistence/generated/prisma/client'
+import { type TramoParaLargos, largoDePiscina, largosPorCarril, resumirLargos } from '../../domain/services/largos'
+import { tramoPlausible } from '../../domain/services/motor-eventos'
 
 /** Las sesiones que esa persona puede ver: las que inició, o aquellas en las que le asignaron un carril (como nadador). */
 const visiblesPara = (usuarioId: string): Prisma.SesionWhereInput => ({
@@ -132,6 +134,7 @@ export class PrismaSesionRepository implements SesionRepository {
         entrenador: { select: { nombre: true, rol: true } },
         grupo: { select: { nombre: true } },
         nadadores: { select: { carril: true, nadador: { select: { nombre: true, usuario_id: true } } } },
+        calibracion: { select: { geometria: true } },
       },
     })
     if (!filas.length) return []
@@ -147,26 +150,43 @@ export class PrismaSesionRepository implements SesionRepository {
     // tramos de esas sesiones: lo justo para el resumen (no se traen los eventos)
     const tramos = await this.prisma.tramo.findMany({
       where: { sesion_id: { in: ids } },
-      select: { sesion_id: true, carril: true, distancia_m: true, t_inicio: true, t_fin: true },
+      select: { id: true, sesion_id: true, carril: true, distancia_m: true, t_inicio: true, t_fin: true, nodo_desde_m: true, nodo_hasta_m: true, observado: true },
     })
+    // los largos de cada sesión y carril (misma regla que en los resultados: domain/services/largos)
+    const paraLargos = new Map<string, TramoParaLargos[]>()
     // lo medido, carril por carril (cada nadador por separado); los totales de la sesión salen de sumar estos
-    type Medido = { tramos: number; metros: number; segundos: number }
+    type Medido = { tramos: number; estimados: number; metros: number; segundos: number }
     const porSesion = new Map<string, Map<number, Medido>>()
     for (const t of tramos) {
       const permitidos = suyos.get(t.sesion_id)
       if (permitidos && !permitidos.has(t.carril)) continue
+      const segundosTramo = (t.t_fin.getTime() - t.t_inicio.getTime()) / 1000
+      if (segundosTramo <= 0 || !tramoPlausible({ velocidad_ms: t.distancia_m.toNumber() / segundosTramo })) continue
       const carriles = porSesion.get(t.sesion_id) ?? new Map<number, Medido>()
-      const m = carriles.get(t.carril) ?? { tramos: 0, metros: 0, segundos: 0 }
+      const m = carriles.get(t.carril) ?? { tramos: 0, estimados: 0, metros: 0, segundos: 0 }
       m.tramos += 1
+      if (!t.observado) m.estimados += 1
       m.metros += t.distancia_m.toNumber()
       m.segundos += (t.t_fin.getTime() - t.t_inicio.getTime()) / 1000
       carriles.set(t.carril, m)
       porSesion.set(t.sesion_id, carriles)
+      const lista = paraLargos.get(t.sesion_id) ?? []
+      lista.push({
+        id: t.id,
+        carril: t.carril,
+        nodo_desde_m: Number(t.nodo_desde_m),
+        nodo_hasta_m: Number(t.nodo_hasta_m),
+        t_inicio: t.t_inicio.getTime(),
+        t_fin: t.t_fin.getTime(),
+        observado: t.observado,
+      })
+      paraLargos.set(t.sesion_id, lista)
     }
     const velocidad = (metros: number, segundos: number) => (segundos > 0 ? Math.round((metros / segundos) * 1000) / 1000 : null)
     return filas.map((f) => {
       const medido = porSesion.get(f.id) ?? new Map<number, Medido>()
       const permitidos = suyos.get(f.id)
+      const largos = largosPorCarril(paraLargos.get(f.id) ?? [], largoDePiscina(f.calibracion?.geometria))
       // una fila por carril de la sesión (con su nadador, aunque todavía no tenga tramos) y por cada carril donde se midió algo
       const numeros = new Set<number>(medido.keys())
       for (const n of f.nadadores) if (!permitidos || permitidos.has(n.carril)) numeros.add(n.carril)
@@ -177,9 +197,12 @@ export class PrismaSesionRepository implements SesionRepository {
           return {
             carril,
             nadador: f.nadadores.find((n) => n.carril === carril)?.nadador?.nombre ?? null,
+            usuario_id: f.nadadores.find((n) => n.carril === carril)?.nadador?.usuario_id ?? null,
             tramos: m?.tramos ?? 0,
+            tramos_estimados: m?.estimados ?? 0,
             distancia_m: m ? Math.round(m.metros * 100) / 100 : 0,
             velocidad_media_ms: m ? velocidad(m.metros, m.segundos) : null,
+            ...resumirLargos(largos.filter((l) => l.carril === carril)),
           }
         })
       let metros = 0
@@ -200,5 +223,12 @@ export class PrismaSesionRepository implements SesionRepository {
         por_carril,
       }
     })
+  }
+
+  async contarPorEstado(): Promise<Record<EstadoSesion, number>> {
+    const grupos = await this.prisma.sesion.groupBy({ by: ['estado'], _count: { _all: true } })
+    const r: Record<EstadoSesion, number> = { activa: 0, finalizada: 0, cancelada: 0 }
+    for (const g of grupos) r[g.estado] = g._count._all
+    return r
   }
 }

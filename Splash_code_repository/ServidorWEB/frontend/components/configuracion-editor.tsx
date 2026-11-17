@@ -133,7 +133,7 @@ export function ConfiguracionEditor() {
     return (
       <main className="min-h-screen bg-slate-50 p-5 text-slate-950 sm:p-8">
         <div className="mx-auto max-w-3xl">
-          <Link href="/" className="text-sm font-medium text-blue-600 hover:underline">← Volver al inicio</Link>
+          <Link href="/admin" className="text-sm font-medium text-blue-600 hover:underline">← Volver al inicio</Link>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight">Configuración de la piscina y la cámara</h1>
           <p className={`mt-6 rounded-xl px-4 py-3 text-sm ${fallo ? 'bg-rose-50 text-rose-800' : 'bg-slate-100 text-slate-600'}`}>
             {fallo ?? 'Cargando…'}
@@ -150,7 +150,7 @@ export function ConfiguracionEditor() {
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 sm:p-8">
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-medium text-blue-600">
-          <Link href="/" className="hover:underline">← Volver al inicio</Link>
+          <Link href="/admin" className="hover:underline">← Volver al inicio</Link>
           <Link href="/calibracion" className="hover:underline">Calibración</Link>
           <Link href="/zonas" className="hover:underline">Zonas de análisis</Link>
         </div>

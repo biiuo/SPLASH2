@@ -38,6 +38,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from enviador import EnviadorBackend  # noqa: E402
 from identidad import GestorIdentidades  # noqa: E402
+from latido import PublicadorLatido  # noqa: E402
 from publicador_frame import PublicadorFrame  # noqa: E402
 from trayectoria import Trayectorias  # noqa: E402
 from zonas_activas import ZonasActivas  # noqa: E402
@@ -61,14 +62,35 @@ class Captura(threading.Thread):
         self.fps_fuente = 25.0
         self.t_inicio = None
         self.ultimo_frame = None    # el último frame leído (lo usa el publicador del frame de calibración)
+        self.conectada = False      # si la fuente está transmitiendo ahora (lo informa el heartbeat)
+
+    def _abrir(self, es_archivo):
+        """Abre la fuente. Una cámara puede no estar transmitiendo todavía (la simulada se prende cuando uno quiere, la
+        real puede estar reiniciándose): se reintenta cada 2 s hasta que responda. Un archivo que no abre es un error."""
+        avisado = False
+        while not self.parar.is_set():
+            cap = cv2.VideoCapture(self.fuente)
+            if cap.isOpened():
+                self.conectada = True
+                if avisado:
+                    print(f"[captura] conectado a {self.fuente}")
+                return cap
+            cap.release()
+            if es_archivo:
+                print(f"ERROR: no pude abrir {self.fuente}")
+                return None
+            if not avisado:
+                print(f"[captura] {self.fuente} no transmite todavía: reintento cada 2 s")
+                avisado = True
+            self.parar.wait(2)
+        return None
 
     def run(self):
-        cap = cv2.VideoCapture(self.fuente)
-        if not cap.isOpened():
-            print(f"ERROR: no pude abrir {self.fuente}")
+        es_archivo = isinstance(self.fuente, str) and not self.fuente.lower().startswith(PREFIJOS_CAMARA)
+        cap = self._abrir(es_archivo)
+        if cap is None:
             self.terminado.set()
             return
-        es_archivo = isinstance(self.fuente, str) and not self.fuente.lower().startswith(PREFIJOS_CAMARA)
         self.fps_fuente = cap.get(cv2.CAP_PROP_FPS) or 25.0
         self.t_inicio = time.time()
         idx = 0
@@ -76,7 +98,16 @@ class Captura(threading.Thread):
             while not self.parar.is_set():
                 ret, frame = cap.read()
                 if not ret:
-                    break
+                    if es_archivo:
+                        break
+                    # la cámara se cortó (o se apagó la simulada): se espera a que vuelva, sin terminar el programa
+                    print("[captura] se cortó el video; espero a que vuelva")
+                    self.conectada = False
+                    cap.release()
+                    cap = self._abrir(es_archivo)
+                    if cap is None:
+                        break
+                    continue
                 # cámara: reloj real; archivo: tiempo del video (reproducible)
                 t_cap = idx / self.fps_fuente if es_archivo else time.time()
                 paquete = (idx, t_cap, frame)
@@ -105,7 +136,9 @@ class Captura(threading.Thread):
                     if espera > 0:
                         time.sleep(espera)
         finally:
-            cap.release()
+            self.conectada = False
+            if cap is not None:
+                cap.release()
             self.terminado.set()
 
 
@@ -127,9 +160,23 @@ class Inferencia(threading.Thread):
         self.procesados = 0
         self.en_espera = 0          # frames descartados porque no había sesión
         self.esperando = False
+        # tiempo procesando de verdad (con sesión), para que los fps no se diluyan con el tiempo en pausa
+        self.t_activo = 0.0
+        self._desde = None          # cuándo empezó el procesamiento en curso (None = en pausa)
+        self._procesados_desde = 0
         self.ids_bytetrack = set()
         self.ultimo = None          # (idx, t_captura, tracks_estables, frame)
         self.terminado = threading.Event()
+
+    def cerrar_tramo(self):
+        """Terminó un procesamiento (se acabó la sesión o el programa): suma su tiempo e informa a cuántos fps fue."""
+        if self._desde is None:
+            return
+        dur = time.time() - self._desde
+        n = self.procesados - self._procesados_desde
+        self.t_activo += dur
+        self._desde = None
+        print(f"[inferencia] fin del procesamiento: {n} frames en {dur:.1f} s -> {n / max(dur, 1e-6):.1f} fps")
 
     def _esperar_sesion(self):
         """Sin sesión: no corre el modelo. Devuelve True si hay que saltear este ciclo."""
@@ -139,9 +186,12 @@ class Inferencia(threading.Thread):
                 print("[inferencia] hay sesión: empiezo a procesar")
                 if self.crear_tracker:
                     self.tracker = self.crear_tracker()
+            if self._desde is None:
+                self._desde, self._procesados_desde = time.time(), self.procesados
             return False
         if not self.esperando:
             self.esperando = True
+            self.cerrar_tramo()
             print("[inferencia] sin sesión activa: el modelo queda en pausa hasta que se inicie una desde la web")
         if self.captura.descartar:          # cámara: leer y tirar, para no perder la conexión
             try:
@@ -167,9 +217,15 @@ class Inferencia(threading.Thread):
                     if self.captura.terminado.is_set():
                         break
                     continue
-                # zonas nuevas (la sesión usa otra posición de cámara): se cambian entre dos frames, nunca a mitad de uno
-                if self.zonas_activas and self.zonas_activas.aplicar_pendiente() and self.gestor:
-                    self.gestor.cambiar_carriles(self.zonas_activas.carriles)
+                if frame is None or frame.size == 0:
+                    continue    # frame roto (la cámara se cortó): no se le pasa al modelo
+                # zonas nuevas (la sesión usa otra posición de cámara, o el video resultó de otro tamaño que el que
+                # se supuso al arrancar): se cambian entre dos frames, nunca a mitad de uno
+                if self.zonas_activas:
+                    cambio = self.zonas_activas.ajustar_tamano(frame.shape[1], frame.shape[0])
+                    cambio = self.zonas_activas.aplicar_pendiente() or cambio
+                    if cambio and self.gestor:
+                        self.gestor.cambiar_carriles(self.zonas_activas.carriles)
                 det = self.detector(frame)
                 zonas = self.zonas_activas.zonas if self.zonas_activas else None
                 if zonas is not None:
@@ -239,6 +295,8 @@ def construir_real(args, activas):
         # con recorte el modelo solo ve los carriles; las cajas vuelven a coordenadas del frame completo
         recorte = activas.recorte
         vista = recorte.aplicar(frame) if recorte else frame
+        if vista.size == 0:     # recorte fuera del frame: mejor el frame completo que tirar abajo la inferencia
+            vista, recorte = frame, None
         det = rt.detectar(model, vista, args.img_size, args.letterbox)
         if recorte:
             det = recorte.volver(det)
@@ -367,12 +425,36 @@ def main():
         publicador = PublicadorFrame(args.backend_url, lambda: captura.ultimo_frame, token=os.environ.get("IA_TOKEN") or None,
                                      cada_s=args.frame_cada_s)
         publicador.start()
+    latido = None
+    if args.backend_url:
+        previo = {"t": time.time(), "procesados": 0, "capturados": 0}
+
+        def estado_actual():
+            # fps de los últimos segundos (desde el latido anterior), no el promedio desde que arrancó
+            ahora = time.time()
+            dt = max(ahora - previo["t"], 1e-6)
+            fps = (inferencia.procesados - previo["procesados"]) / dt
+            fps_cam = (captura.capturados - previo["capturados"]) / dt
+            previo.update(t=ahora, procesados=inferencia.procesados, capturados=captura.capturados)
+            return {
+                "camara_conectada": bool(captura.conectada),
+                "procesando": bool(captura.conectada and not inferencia.esperando and not inferencia.terminado.is_set()),
+                "fps": round(fps, 1),
+                "fps_camara": round(fps_cam, 1),
+                "sesiones": len(enviador.sesiones) if enviador else 0,
+                "identidades": len(gestor.estados),
+                "pendientes_envio": enviador.pendientes if enviador else 0,
+                "errores_envio": enviador.errores if enviador else 0,
+                "zonas": activas.origen if activas else "simuladas",
+            }
+
+        latido = PublicadorLatido(args.backend_url, estado_actual, token=os.environ.get("IA_TOKEN") or None)
+        latido.start()
     if enviador:
         enviador.start()
     captura.start()
     inferencia.start()
 
-    proximo = t0 + 2
     try:
         while not inferencia.terminado.is_set():
             time.sleep(0.05 if args.mostrar else 0.2)
@@ -389,16 +471,12 @@ def main():
                 cv2.imshow("pipeline concurrente - q para salir", dibujar(frame, est, texto))
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
-            if ahora >= proximo:
-                print(f"[{transcurrido:5.1f}s] captura {captura.capturados / transcurrido:5.1f} fps | "
-                      f"proceso {inferencia.procesados / transcurrido:5.1f} fps | "
-                      f"descartados {captura.descartados} | identidades {len(gestor.estados)}"
-                      + (" | en pausa: sin sesión" if inferencia.esperando else ""))
-                proximo += 2
     except KeyboardInterrupt:
         pass
     finally:
         parar.set()
+        if latido:
+            latido.cerrar()
         if publicador:
             publicador.cerrar()
         captura.join(timeout=3)
@@ -411,7 +489,10 @@ def main():
     print("\nResumen")
     print(f"  duración              {dur:.1f} s")
     print(f"  capturados            {captura.capturados}  ({captura.capturados / dur:.1f} fps; fuente {captura.fps_fuente:.1f} fps)")
-    print(f"  procesados            {inferencia.procesados}  ({inferencia.procesados / dur:.1f} fps)")
+    inferencia.cerrar_tramo()
+    activo = inferencia.t_activo
+    print(f"  procesados            {inferencia.procesados}  "
+          + (f"({inferencia.procesados / activo:.1f} fps en {activo:.1f} s con sesión)" if activo > 0 else "(no hubo sesión)"))
     print(f"  descartados           {captura.descartados}")
     print(f"  sin sesión (en pausa) {inferencia.en_espera}")
     print(f"  IDs de ByteTrack      {len(inferencia.ids_bytetrack)}")

@@ -79,7 +79,19 @@ export interface ConfigMotor {
   ventana_velocidad_s: number
   /** Cuánto tiene que sostenerse la condición para cambiar de estado. */
   ventana_confirmacion_s: number
+  /** Más rápido que esto entre dos muestras = la posición saltó (error de detección): la muestra se ignora. */
+  velocidad_max_muestra_ms: number
+  /** Si la posición sigue "saltada" este tiempo, se acepta como la nueva (otra detección): se empieza de cero. */
+  reinicio_tras_salto_s: number
 }
+
+/**
+ * Lo físicamente posible. El récord mundial de 50 m libre ronda los 2,4 m/s de promedio: un tramo más rápido que
+ * VELOCIDAD_MAX_TRAMO_MS es un error de detección (un salto de la posición, sobre todo en la punta lejana, donde cada
+ * píxel son muchos centímetros), no un nadador. Se descarta al medir y también al leer lo que ya estaba guardado.
+ */
+export const VELOCIDAD_MAX_TRAMO_MS = 3
+export const tramoPlausible = (t: { velocidad_ms: number }) => Number.isFinite(t.velocidad_ms) && t.velocidad_ms <= VELOCIDAD_MAX_TRAMO_MS
 
 export const CONFIG_MOTOR_POR_DEFECTO: ConfigMotor = {
   nodos: [0, 5, 10, 15, 20, 25],
@@ -89,6 +101,8 @@ export const CONFIG_MOTOR_POR_DEFECTO: ConfigMotor = {
   velocidad_minima_ms: 0.2,
   ventana_velocidad_s: 1.5,
   ventana_confirmacion_s: 3,
+  velocidad_max_muestra_ms: 4,
+  reinicio_tras_salto_s: 1.5,
 }
 
 interface Umbral {
@@ -138,6 +152,8 @@ interface EstadoNadador {
   candidato: { estado: 'nadando' | 'descansando'; desde: number } | null
   descanso_ms: number
   inicioDescanso: number | null
+  /** Desde cuándo las muestras vienen "saltadas" respecto de la última buena (null = no hay salto). */
+  desdeSalto: number | null
 }
 
 const lado = (v: number): -1 | 1 => (v >= 0 ? 1 : -1)
@@ -182,6 +198,25 @@ export class MotorEventos {
     const previa = e.ultima
     if (previa && m.t <= previa.t) return salida // repetida o fuera de orden: se ignora
 
+    // salto imposible (la detección se fue a otro lado un instante): la muestra se ignora. Si la posición nueva se
+    // sostiene, es otra detección (otro nadador, o el mismo reencontrado lejos): se empieza de cero, sin cruces falsos.
+    if (previa) {
+      const v = Math.abs(m.x_m - previa.x_m) / ((m.t - previa.t) / 1000)
+      if (v > this.config.velocidad_max_muestra_ms) {
+        e.desdeSalto ??= m.t
+        if (m.t - e.desdeSalto < this.config.reinicio_tras_salto_s * 1000) return salida
+        e.umbrales = new Map()
+        e.paso = null
+        e.partida = null
+        e.ventana = []
+        e.desdeSalto = null
+        this.iniciar(e, m)
+        e.ultima = m
+        return salida
+      }
+      e.desdeSalto = null
+    }
+
     if (previa) this.cruces(e, previa, m, salida)
     else this.iniciar(e, m)
 
@@ -224,6 +259,7 @@ export class MotorEventos {
         candidato: null,
         descanso_ms: 0,
         inicioDescanso: null,
+        desdeSalto: null,
       }
       this.nadadores.set(k, e)
     }
@@ -343,6 +379,12 @@ export class MotorEventos {
       if (paso && paso.nodo !== nodo && ev.tipo === 'cruce_nodo') {
         const distancia = Math.abs(nodo - paso.nodo)
         const dt = (ev.t - paso.t) / 1000
+        // más rápido que lo humanamente posible: error de detección. No se guarda ni suma distancia ni largos.
+        if (dt > 0 && distancia / dt > VELOCIDAD_MAX_TRAMO_MS) {
+          e.paso = { nodo, t: ev.t, observado: ev.observado }
+          e.partida = null
+          return
+        }
         if (dt > 0) {
           salida.tramos.push({
             carril: ev.carril,

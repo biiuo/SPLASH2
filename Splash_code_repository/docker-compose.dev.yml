@@ -2,23 +2,24 @@ name: safesplash-dev
 
 services:
   # ---------------------------------------------------------------- base de datos
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-safesplash}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definí POSTGRES_PASSWORD en .env}
-      POSTGRES_DB: ${POSTGRES_DB:-safesplash}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    ports:
-      - "127.0.0.1:5432:5432"
-    networks: [backend]
-
+  
+  #db:
+    #image: postgres:16-alpine
+    #environment:
+      #POSTGRES_USER: ${POSTGRES_USER:-safesplash}
+      #POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definí POSTGRES_PASSWORD en .env}
+      #POSTGRES_DB: ${POSTGRES_DB:-safesplash}
+    #volumes:
+      #- pgdata:/var/lib/postgresql/data
+    #healthcheck:
+      #test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      #interval: 5s
+      #timeout: 3s
+      #retries: 10
+    #ports:
+      #- "127.0.0.1:5432:5432"
+    #networks: [backend]
+  
   # ---------------------------------------------------------------- backend (NestJS, con recarga)
   backend:
     build:
@@ -27,9 +28,6 @@ services:
         FROM node:22-alpine
         RUN apk add --no-cache openssl
         WORKDIR /app
-    depends_on:
-      db:
-        condition: service_healthy
     working_dir: /app
     # npm install: no hace nada si las dependencias no cambiaron. prisma generate / migrate deploy: como en producción.
     command: >
@@ -41,6 +39,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-safesplash}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-safesplash}}
       PORT: "3001"
       NODE_ENV: development
+      # conexiones a la base por proceso: el pooler de Supabase en modo sesión admite 15 en total (entre todos)
+      DB_POOL_MAX: ${DB_POOL_MAX:-5}
       JWT_SECRET: ${JWT_SECRET:?Definí JWT_SECRET en .env (al menos 32 caracteres)}
       IA_TOKEN: ${IA_TOKEN:?Definí IA_TOKEN en .env}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
@@ -55,6 +55,10 @@ services:
       - backend_node_modules:/app/node_modules    # las dependencias viven en el contenedor, no en tu PC
     ports:
       - "127.0.0.1:3001:3001"
+    # DNS públicos: el del router a veces no resuelve el host de Supabase y prisma migrate deploy falla con P1001
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/salud >/dev/null || exit 1"]
       interval: 10s
@@ -157,7 +161,7 @@ services:
     volumes:
       - ./videos:/videos:ro
     command: >
-      -re -stream_loop -1 -i /videos/${DEMO_VIDEO:-demo.mp4}
+      -re -stream_loop -1 -ss ${DEMO_INICIO:-0} -i /videos/${DEMO_VIDEO:-demo.mp4}
       -c:v libx264 -preset ultrafast -tune zerolatency
       -f rtsp -rtsp_transport tcp rtsp://mediamtx:8554/cam
     networks: [video]

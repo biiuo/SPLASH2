@@ -181,7 +181,7 @@ export type CalibracionGuardada = {
 
 export type Rol = 'administrador' | 'entrenador' | 'nadador'
 
-export type Usuario = { id: string; email: string; nombre: string; rol: Rol; activo: boolean }
+export type Usuario = { id: string; email: string; nombre: string; rol: Rol; activo: boolean; creado_en?: string; telefono?: string | null }
 
 // ---------------------------------------------------------------- sesiones y resultados
 
@@ -222,10 +222,26 @@ export type SesionDisponible = { id: string; entrenador: string | null; grupo: s
 export type EstadoCarriles = { carriles: EstadoCarril[]; sesiones_disponibles: SesionDisponible[] }
 
 /** Un nadador (perfil de una cuenta de nadador). */
-export type Nadador = { id: string; usuario_id: string | null; nombre: string; email: string | null }
+export type Nadador = { id: string; usuario_id: string | null; nombre: string; email: string | null; telefono?: string | null }
 
 /** Un grupo de un entrenador, con sus nadadores. Un entrenador puede tener varios. */
-export type Grupo = { id: string; entrenador_id: string; entrenador: string; nombre: string; nadadores: Nadador[] }
+export type DiaSemana = 'lun' | 'mar' | 'mie' | 'jue' | 'vie' | 'sab' | 'dom'
+export type NivelGrupo = 'principiante' | 'intermedio' | 'avanzado' | 'competitivo'
+/** Cuándo entrena el grupo (horas HH:MM). */
+export type HorarioGrupo = { dias: DiaSemana[]; inicio: string; fin: string }
+
+export type Grupo = {
+  id: string
+  entrenador_id: string
+  entrenador: string
+  entrenador_email?: string | null
+  entrenador_telefono?: string | null
+  nombre: string
+  descripcion?: string | null
+  nivel?: NivelGrupo | null
+  horario?: HorarioGrupo | null
+  nadadores: Nadador[]
+}
 
 /** Un nadador de la lista de todos, con los ids de MIS grupos en los que ya está. */
 export type NadadorDeLaLista = Nadador & { mis_grupos: string[] }
@@ -254,16 +270,46 @@ export type TramoGuardado = {
   observado: boolean
 }
 
-export type ResultadosSesion = { eventos: EventoGuardado[]; tramos: TramoGuardado[] }
+/**
+ * Un largo completo (de pared a pared), armado por el backend a partir de los tramos. `estimado` = alguno de sus
+ * tramos no se vio: no es una medición confirmada.
+ */
+export type Largo = {
+  numero: number
+  carril: number
+  desde_m: number
+  hasta_m: number
+  t_inicio: string
+  t_fin: string
+  duracion_s: number
+  velocidad_ms: number
+  estimado: boolean
+  /** Viraje + pausa desde el largo anterior (null en el primero). */
+  pausa_previa_s: number | null
+  /** Ids de los tramos que lo forman. */
+  tramos: string[]
+}
+
+export type ResultadosSesion = { eventos: EventoGuardado[]; tramos: TramoGuardado[]; largos: Largo[]; largo_m: number }
 
 /** Una sesión del historial, con el resumen de lo medido (GET /api/sesiones). */
 export type ResumenCarril = {
   carril: number
   /** Nombre del nadador de ese carril (null: carril sin nadador asignado). */
   nadador: string | null
+  /** La cuenta de ese nadador (null: sin nadador o sin cuenta). */
+  usuario_id: string | null
   tramos: number
+  /** De esos tramos, cuántos son estimados. */
+  tramos_estimados: number
   distancia_m: number
   velocidad_media_ms: number | null
+  /** Largos completos y cuántos sin partes estimadas. */
+  largos: number
+  largos_medidos: number
+  /** Récords de la sesión, solo con largos medidos. */
+  mejor_largo_s: number | null
+  velocidad_max_ms: number | null
 }
 
 export type ResumenSesion = Omit<Sesion, 'carriles'> & {
@@ -292,4 +338,56 @@ export type CalibracionResumen = {
   activa: boolean
   /** Si se guardó la imagen sobre la que se calibró. */
   tiene_imagen: boolean
+}
+
+// ---------------------------------------------------------------- administración
+
+export type ResumenAdmin = {
+  usuarios: Record<Rol, number>
+  sesiones: { activa: number; finalizada: number; cancelada: number; total: number; con_errores: number }
+  por_dia: { dia: string; sesiones: number }[]
+  recientes: ResumenSesion[]
+  rendimiento: { distancia_m: number; velocidad_media_ms: number | null; largos: number; tramos: number; tramos_estimados: number }
+}
+
+/** Un componente que late (servidor de IA, celulares) y su último estado. */
+export type EstadoComponente = {
+  componente: string
+  estado: {
+    camara_conectada?: boolean
+    procesando?: boolean
+    fps?: number
+    fps_camara?: number
+    sesiones?: number
+    identidades?: number
+    pendientes_envio?: number
+    errores_envio?: number
+    zonas?: string
+  }
+  ultimo_latido: string
+  hace_s: number
+  vivo: boolean
+}
+
+export type Monitoreo = { componentes: EstadoComponente[]; activas: Sesion[] }
+
+// ---------------------------------------------------------------- objetivos
+
+export type TipoObjetivo = 'distancia' | 'velocidad' | 'tiempo_largo'
+
+/** Una meta de un nadador entre dos fechas (YYYY-MM-DD, inclusive). */
+export type Objetivo = {
+  id: string
+  nadador_id: string
+  nadador: string
+  usuario_id: string | null
+  entrenador_id: string | null
+  entrenador: string | null
+  tipo: TipoObjetivo
+  /** distancia: metros; velocidad: m/s; tiempo_largo: segundos (o menos). */
+  meta: number
+  desde: string
+  hasta: string
+  descripcion: string | null
+  creado_en: string
 }

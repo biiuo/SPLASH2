@@ -95,8 +95,9 @@ import { MODO_POR_DEFECTO } from './ajustes.module'
     },
     {
       provide: ObtenerResultadosUseCase,
-      useFactory: (sesiones: SesionRepository, resultados: ResultadosRepository) => new ObtenerResultadosUseCase(sesiones, resultados),
-      inject: [SESION_REPOSITORY, RESULTADOS_REPOSITORY],
+      useFactory: (sesiones: SesionRepository, resultados: ResultadosRepository, calibraciones: CalibracionRepository) =>
+        new ObtenerResultadosUseCase(sesiones, resultados, calibraciones),
+      inject: [SESION_REPOSITORY, RESULTADOS_REPOSITORY, CALIBRACION_REPOSITORY],
     },
     {
       provide: GrupoUseCases,

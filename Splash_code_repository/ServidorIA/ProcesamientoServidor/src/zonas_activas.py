@@ -28,22 +28,50 @@ class ZonasActivas:
         self.carriles = {}      # {nombre: polígono} de las zonas lane*/carril*
         self.recorte = None     # Recorte que ve el modelo, o None (frame completo)
         self.origen = "ninguna"
+        self._archivo = None    # las últimas zonas pedidas, para volver a aplicarlas si cambia el tamaño del video
         self._pendiente = None
         self._lock = threading.Lock()
 
     # ---- cargar ----
     def usar(self, archivo, origen):
-        """Aplica ya unas zonas ({'image_size', 'zones'} como zones.json). Solo desde el hilo que procesa (o antes de empezar)."""
+        """Aplica ya unas zonas ({'image_size', 'zones'} como zones.json). Solo desde el hilo que procesa (o antes de empezar).
+
+        Si todavía no se sabe el tamaño del video (la cámara no respondía al arrancar), se guardan y se aplican con el
+        primer frame (ajustar_tamano). Si algo falla, no se cambia nada: o se aplica todo o se siguen usando las anteriores.
+        """
+        if self.ancho <= 0 or self.alto <= 0:
+            self._archivo = (archivo, origen)
+            self.log(f"Zonas ({origen}): todavía no sé el tamaño del video; las aplico con el primer frame")
+            return
         zonas = Zones(archivo["zones"], archivo.get("image_size")).fit_to(self.ancho, self.alto)
-        self.zonas = zonas
         # _polys ya viene reescalado al tamaño real del video
-        self.carriles = {z["name"]: p for z, p in zip(zonas.zones, zonas._polys)
-                         if z["name"].lower().startswith(PREFIJOS_CARRIL)}
-        self.recorte = None if self.sin_recorte else Recorte(zonas, self.ancho, self.alto, margen=self.margen_recorte)
-        self.origen = origen
+        carriles = {z["name"]: p for z, p in zip(zonas.zones, zonas._polys)
+                    if z["name"].lower().startswith(PREFIJOS_CARRIL)}
+        recorte = None if self.sin_recorte else Recorte(zonas, self.ancho, self.alto, margen=self.margen_recorte)
+        if recorte and (recorte.x2 - recorte.x1 < 2 or recorte.y2 - recorte.y1 < 2):
+            raise ValueError(f"el recorte de los carriles queda vacío {recorte.caja} en un video de {self.ancho}x{self.alto}")
+        self.zonas, self.carriles, self.recorte, self.origen = zonas, carriles, recorte, origen
+        self._archivo = (archivo, origen)
         self.log(f"Zonas ({origen}): {len(zonas.zones)} | carriles para identidades: {list(self.carriles)}")
         if self.recorte:
             self.log(f"Recorte: {self.recorte.caja} -> el modelo ve el {self.recorte.fraccion_area:.0%} del frame")
+
+    def ajustar_tamano(self, ancho, alto):
+        """Con el tamaño real de un frame: si cambió (o al arrancar no se sabía), vuelve a aplicar las zonas.
+        True si se aplicaron (entonces hay que avisarle al gestor de identidades). Solo desde el hilo que procesa."""
+        if (ancho, alto) == (self.ancho, self.alto) or ancho <= 0 or alto <= 0:
+            return False
+        self.log(f"Tamaño del video: {self.ancho}x{self.alto} -> {ancho}x{alto}")
+        self.ancho, self.alto = ancho, alto
+        if self._archivo is None:
+            return False
+        archivo, origen = self._archivo
+        try:
+            self.usar(archivo, origen)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"AVISO: no pude ajustar las zonas de {origen} al video ({e}); sigo sin recorte ni filtro de zonas")
+            self.zonas, self.carriles, self.recorte = None, {}, None
+        return True
 
     def cargar_archivo(self, ruta):
         with open(ruta, encoding="utf-8") as f:

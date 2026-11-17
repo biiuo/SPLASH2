@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 
-import { ActivarCalibracionUseCase } from '../../application/use-cases/calibracion/activar-calibracion.usecase'
+import { ActivarCalibracionUseCase, DesactivarCalibracionUseCase } from '../../application/use-cases/calibracion/activar-calibracion.usecase'
+import { EliminarCalibracionUseCase } from '../../application/use-cases/calibracion/eliminar-calibracion.usecase'
 import { ActualizarCalibracionUseCase } from '../../application/use-cases/calibracion/actualizar-calibracion.usecase'
 import { ObtenerImagenCalibracionUseCase } from '../../application/use-cases/calibracion/obtener-imagen.usecase'
 import {
@@ -16,6 +17,7 @@ import { GuardarCalibracionUseCase } from '../../application/use-cases/calibraci
 import { ObtenerCalibracionActivaUseCase } from '../../application/use-cases/calibracion/obtener-calibracion-activa.usecase'
 import { ObtenerPuntosReferenciaUseCase } from '../../application/use-cases/calibracion/obtener-puntos-referencia.usecase'
 import { CALIBRACION_REPOSITORY, type CalibracionRepository } from '../../domain/repositories/calibracion.repository'
+import { SESION_REPOSITORY, type SesionRepository } from '../../domain/repositories/sesion.repository'
 import { CONFIGURACION_REPOSITORY, type ConfiguracionRepository } from '../../domain/repositories/configuracion.repository'
 import { CalibracionController } from '../controllers/calibracion.controller'
 
@@ -63,6 +65,16 @@ import { CalibracionController } from '../controllers/calibracion.controller'
       provide: ActivarCalibracionUseCase,
       useFactory: (calibraciones: CalibracionRepository) => new ActivarCalibracionUseCase(calibraciones),
       inject: [CALIBRACION_REPOSITORY],
+    },
+    {
+      provide: DesactivarCalibracionUseCase,
+      useFactory: (calibraciones: CalibracionRepository) => new DesactivarCalibracionUseCase(calibraciones),
+      inject: [CALIBRACION_REPOSITORY],
+    },
+    {
+      provide: EliminarCalibracionUseCase,
+      useFactory: (calibraciones: CalibracionRepository, sesiones: SesionRepository) => new EliminarCalibracionUseCase(calibraciones, sesiones),
+      inject: [CALIBRACION_REPOSITORY, SESION_REPOSITORY],
     },
     {
       provide: ActualizarCalibracionUseCase,

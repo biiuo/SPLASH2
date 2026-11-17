@@ -44,7 +44,7 @@ export class ConfiguracionController {
   }
 
   @Put()
-  @Roles('entrenador', 'administrador')
+  @Roles('administrador')
   @ApiOperation({
     summary: 'Guardar la configuración',
     description:
