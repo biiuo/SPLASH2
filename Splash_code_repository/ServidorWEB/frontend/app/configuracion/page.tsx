@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 import { ConSesion } from '@/components/con-sesion'
-import { ConfiguracionEditor } from '@/components/configuracion-editor'
+import { ConfiguracionEditor } from '@/features/configuracion'
 
 export const metadata: Metadata = {
   title: 'Configuración · SafeSplash',

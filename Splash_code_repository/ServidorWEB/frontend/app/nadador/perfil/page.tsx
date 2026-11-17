@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
-import { PerfilCuenta } from '@/components/perfil-cuenta'
+import { PerfilCuenta } from '@/features/cuenta'
 import { api } from '@/lib/api'
 
 type MiGrupo = { id: string; nombre: string; entrenador: string; entrenador_email?: string | null; entrenador_telefono?: string | null }

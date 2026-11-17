@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Activity, Lock, Play, Square, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { ProcesadorCelularPanel } from '@/components/procesador-celular'
+import { ProcesadorCelularPanel } from './procesador-celular'
 import { ErrorApi, api } from '@/lib/api'
 import { useCuenta } from '@/lib/cuenta'
 import { decidirModo, marcarQueProcesoAqui } from '@/lib/modo'
@@ -61,20 +61,25 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
   const [problema, setProblema] = useState<string | null>(null)
   const [ahora, setAhora] = useState(() => Date.now())
   const sesionId = useRef<string | null>(null)
-  sesionId.current = sesion?.id ?? null
+  useEffect(() => {
+    sesionId.current = sesion?.id ?? null
+  }, [sesion?.id])
 
-  const actualizar = useCallback(async () => {
-    try {
-      const [activa, carriles] = await Promise.all([api.sesionActiva(), api.estadoCarriles()])
-      setSesion(activa)
-      setEstado(carriles)
-      setResultados(activa ? await api.resultadosSesion(activa.id) : null)
-      setProblema((p) => (p && p.startsWith('No se pudo') ? null : p))
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo consultar la sesión.')
-    } finally {
-      setCargado(true)
-    }
+  const actualizar = useCallback(() => {
+    return Promise.all([api.sesionActiva(), api.estadoCarriles()])
+      .then(([activa, carriles]) => {
+        setSesion(activa)
+        setEstado(carriles)
+        return activa ? api.resultadosSesion(activa.id) : null
+      })
+      .then((resultado) => {
+        setResultados(resultado)
+        setProblema((p) => (p && p.startsWith('No se pudo') ? null : p))
+      })
+      .catch((e: unknown) => {
+        setProblema(e instanceof ErrorApi ? e.message : 'No se pudo consultar la sesión.')
+      })
+      .finally(() => setCargado(true))
   }, [])
 
   // los grupos del entrenador y todos los nadadores, para elegir quién va en cada carril

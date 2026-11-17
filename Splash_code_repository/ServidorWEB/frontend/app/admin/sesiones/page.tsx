@@ -1,6 +1,6 @@
 'use client'
 
-import { ListaSesiones } from '@/components/lista-sesiones'
+import { ListaSesiones } from '@/features/historial'
 
 export default function SesionesAdmin() {
   return (

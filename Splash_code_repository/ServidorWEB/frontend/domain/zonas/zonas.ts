@@ -7,12 +7,8 @@ export type Punto = [number, number]
 export type Zona = { name: string; polygon: Punto[] }
 export type ArchivoZonas = { image_size: [number, number] | null; zones: Zona[] }
 
-const PREFIJOS_CARRIL = ['lane', 'carril']
-
-export function esCarril(nombre: string): boolean {
-  const n = nombre.toLowerCase()
-  return PREFIJOS_CARRIL.some((p) => n.startsWith(p))
-}
+import { esCarril } from './carriles'
+export { esCarril } from './carriles'
 
 export type Recorte = {
   x1: number
@@ -102,7 +98,3 @@ export function escalar(zonas: Zona[], deAncho: number, deAlto: number, aAncho: 
   return zonas.map((z) => ({ name: z.name, polygon: z.polygon.map(([x, y]) => [x * sx, y * sy] as Punto) }))
 }
 
-/** La imagen de un canvas como JPEG en base64 (lo que guarda el backend con la calibración). */
-export function aJpeg(c: HTMLCanvasElement, calidad = 0.88): string {
-  return c.toDataURL('image/jpeg', calidad)
-}

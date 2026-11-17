@@ -1,20 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
-import { GrupoPanel } from '@/components/grupo-panel'
-import { HeroCarousel } from '@/components/hero-carousel'
-import { HistorialSesiones } from '@/components/historial-sesiones'
-import { SesionPanel } from '@/components/sesion-panel'
-import { AuthScreen } from '@/components/auth-screen'
-import { ErrorApi, api } from '@/lib/api'
+import { GrupoPanel } from '@/features/grupo'
+import { HeroCarousel } from './hero-carousel'
+import { HistorialSesiones } from '@/features/historial'
+import { SesionPanel } from '@/features/sesion'
+import { AuthScreen } from '@/features/cuenta'
+import { api } from '@/lib/api'
 import { NOMBRE_ROL, puedeCalibrar, useCuenta } from '@/lib/cuenta'
 import type { Usuario } from '@/lib/tipos'
+import { useParametroUrl } from '@/shared/hooks/use-parametro-url'
 import {
   Activity,
-  ArrowRight,
   LayoutDashboard,
   LogIn,
   Play,
@@ -28,23 +27,19 @@ import {
 
 export function SafeSplashApp() {
   const cuenta = useCuenta()
-  const [view, setView] = useState<'home' | 'login' | 'signup' | 'panel'>('home')
+  const ingresar = useParametroUrl('ingresar')
+  const [vistaElegida, setView] = useState<'home' | 'login' | 'signup' | 'panel' | null>(null)
 
   // /?ingresar (por ejemplo, al entrar a una página que pide sesión) abre directamente el ingreso
-  useEffect(() => {
-    try {
-      if (new URLSearchParams(window.location.search).has('ingresar')) setView('login')
-    } catch {
-      /* sin URL: se queda en el inicio */
-    }
-  }, [])
-
+  const vistaSolicitada = vistaElegida ?? (ingresar !== null ? 'login' : 'home')
   // con la sesión iniciada se va al panel; si la sesión se cierra (o vence), vuelve al inicio
-  useEffect(() => {
-    if (cuenta.cargando) return
-    if (cuenta.usuario && (view === 'login' || view === 'signup')) setView('panel')
-    if (!cuenta.usuario && view === 'panel') setView('home')
-  }, [cuenta.usuario, cuenta.cargando, view])
+  const view = cuenta.cargando
+    ? vistaSolicitada
+    : cuenta.usuario && (vistaSolicitada === 'login' || vistaSolicitada === 'signup')
+      ? 'panel'
+      : !cuenta.usuario && vistaSolicitada === 'panel'
+        ? 'home'
+        : vistaSolicitada
 
   if (view === 'login' || view === 'signup') {
     return <AuthScreen mode={view} onBack={() => setView('home')} onSignup={() => setView('signup')} onLogin={() => setView('login')} />

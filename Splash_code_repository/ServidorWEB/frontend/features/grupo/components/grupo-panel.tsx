@@ -26,15 +26,16 @@ export function GrupoPanel({ alCambiar }: { alCambiar?: () => void } = {}) {
   const [ocupado, setOcupado] = useState(false)
   const [mensaje, setMensaje] = useState<{ ok: boolean; texto: string } | null>(null)
 
-  const cargar = useCallback(async () => {
-    try {
-      const [g, n] = await Promise.all([api.grupos(), api.todosLosNadadores()])
-      setGrupos(g)
-      setNadadores(n)
-      setElegido((actual) => (actual && g.some((x) => x.id === actual) ? actual : (g[0]?.id ?? null)))
-    } catch (e) {
-      setMensaje({ ok: false, texto: e instanceof ErrorApi ? e.message : 'No se pudieron cargar los grupos.' })
-    }
+  const cargar = useCallback(() => {
+    return Promise.all([api.grupos(), api.todosLosNadadores()])
+      .then(([g, n]) => {
+        setGrupos(g)
+        setNadadores(n)
+        setElegido((actual) => (actual && g.some((x) => x.id === actual) ? actual : (g[0]?.id ?? null)))
+      })
+      .catch((e: unknown) => {
+        setMensaje({ ok: false, texto: e instanceof ErrorApi ? e.message : 'No se pudieron cargar los grupos.' })
+      })
   }, [])
 
   useEffect(() => {

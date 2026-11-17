@@ -1,11 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
 
-import { ErrorApi, api } from '@/lib/api'
-import type { CalibracionResumen } from '@/lib/tipos'
 import { esCarril } from '@/lib/zonas'
+import { useCalibracionesGuardadas } from '../hooks/use-calibraciones-guardadas'
+import type { PuertoAdministrarCalibraciones } from '../model/puerto-calibraciones'
+
+interface PropsCalibracionesGuardadas {
+  puerto: PuertoAdministrarCalibraciones
+}
 
 const cm = (m: number | null) => (m === null ? '—' : `${(m * 100).toFixed(1)} cm`)
 const fecha = (iso: string) => new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })
@@ -14,74 +17,9 @@ const fecha = (iso: string) => new Date(iso).toLocaleString('es-CO', { dateStyle
  * Las posiciones de la cámara guardadas. Cada una es una calibración (píxeles -> metros) con sus zonas de análisis:
  * si la cámara se mueve, se calibra de nuevo y se elige acá cuál usar.
  */
-export function CalibracionesGuardadas() {
-  const [lista, setLista] = useState<CalibracionResumen[] | null>(null)
-  const [problema, setProblema] = useState<string | null>(null)
-  const [activando, setActivando] = useState<string | null>(null)
-  const [editando, setEditando] = useState<{ id: string; nombre: string } | null>(null)
-
-  const cargar = useCallback(async () => {
-    try {
-      setLista(await api.historialCalibraciones())
-      setProblema(null)
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudieron cargar las calibraciones.')
-    }
-  }, [])
-
-  useEffect(() => {
-    void cargar()
-  }, [cargar])
-
-  async function activar(id: string) {
-    setActivando(id)
-    try {
-      await api.activarCalibracion(id)
-      await cargar()
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo activar la calibración.')
-    } finally {
-      setActivando(null)
-    }
-  }
-
-  async function desactivar() {
-    if (!window.confirm('¿Dejar de usar esta posición? No va a quedar ninguna activa y no se podrán empezar sesiones hasta elegir una.')) return
-    setActivando('ninguna')
-    try {
-      await api.desactivarCalibracion()
-      await cargar()
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo desactivar la calibración.')
-    } finally {
-      setActivando(null)
-    }
-  }
-
-  async function eliminar(c: CalibracionResumen) {
-    const nombre = c.nombre ?? 'esta posición sin nombre'
-    if (!window.confirm(`¿Eliminar «${nombre}»? Se borran sus puntos, zonas e imagen y no se puede deshacer. Las sesiones que ya la usaron conservan sus resultados.`)) return
-    setActivando(`eliminar:${c.id}`)
-    try {
-      await api.eliminarCalibracion(c.id)
-      await cargar()
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo eliminar la calibración.')
-    } finally {
-      setActivando(null)
-    }
-  }
-
-  async function renombrar() {
-    if (!editando) return
-    try {
-      await api.actualizarCalibracion(editando.id, { nombre: editando.nombre.trim() || null })
-      setEditando(null)
-      await cargar()
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? [e.message, ...e.detalles].join(' ') : 'No se pudo cambiar el nombre.')
-    }
-  }
+export function CalibracionesGuardadas({ puerto }: PropsCalibracionesGuardadas) {
+  const { lista, problema, activando, editando, setEditando, activar, desactivar, eliminar, renombrar } =
+    useCalibracionesGuardadas(puerto)
 
   return (
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 sm:p-8">

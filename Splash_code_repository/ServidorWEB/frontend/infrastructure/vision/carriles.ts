@@ -11,8 +11,8 @@
 //     (se extrapola con su velocidad hasta EXTRAPOLAR_MAX_S y después se mantiene), marcada como tal;
 //   * si el carril pasa más de MAX_ESTIMADO_S sin detección, se deja de mandar; el próximo nadador es otra identidad.
 import type { Caja } from './detector'
-import type { Punto, Zona } from '../zonas'
-import { esCarril } from '../zonas'
+import type { Punto, Zona } from '@/lib/zonas'
+import { esCarril } from '@/lib/zonas'
 
 export type Muestra = { carril: number; identidad: number; t: number; px: [number, number]; estimada?: true }
 

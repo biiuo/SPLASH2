@@ -21,19 +21,23 @@ export function HistorialSesiones() {
   // el entrenador puede filtrar por grupo y ver quiénes lo forman
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [grupoId, setGrupoId] = useState('')
+  const [ahora, setAhora] = useState(0)
   useEffect(() => {
     if (esNadador) return
     api.grupos().then(setGrupos).catch(() => setGrupos([]))
   }, [esNadador])
   const [problema, setProblema] = useState<string | null>(null)
 
-  const cargar = useCallback(async () => {
-    try {
-      setSesiones(await api.sesionesRecientes(20))
-      setProblema(null)
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo cargar el historial.')
-    }
+  const cargar = useCallback(() => {
+    return api.sesionesRecientes(20)
+      .then((resultado) => {
+        setAhora(Date.now())
+        setSesiones(resultado)
+        setProblema(null)
+      })
+      .catch((e: unknown) => {
+        setProblema(e instanceof ErrorApi ? e.message : 'No se pudo cargar el historial.')
+      })
   }, [])
 
   // se recarga cuando una sesión empieza o termina (avisos en vivo del backend)
@@ -48,7 +52,7 @@ export function HistorialSesiones() {
 
   const grupo = grupos.find((g) => g.id === grupoId) ?? null
   const delGrupo = (sesiones ?? []).filter((s) => !grupoId || (grupoId === 'libre' ? !s.grupo_id : s.grupo_id === grupoId))
-  const desde = Date.now() - SEMANA_MS
+  const desde = ahora - SEMANA_MS
   const semana = delGrupo.filter((s) => Date.parse(s.inicio) >= desde)
   const metros = semana.reduce((a, s) => a + s.distancia_m, 0)
   const conVelocidad = semana.filter((s) => s.velocidad_media_ms !== null)
@@ -67,7 +71,7 @@ export function HistorialSesiones() {
           <History className="size-5 text-blue-600" />
           <h3 className="font-semibold">Sesiones recientes</h3>
           {!esNadador && grupos.length > 0 && (
-            <select value={grupoId} onChange={(e) => setGrupoId(e.target.value)} className="ml-auto rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm" aria-label="Filtrar por grupo">
+            <select value={grupoId} onChange={(e) => { setAhora(Date.now()); setGrupoId(e.target.value) }} className="ml-auto rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm" aria-label="Filtrar por grupo">
               <option value="">Todos los grupos</option>
               {grupos.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
               <option value="libre">Sesiones libres</option>

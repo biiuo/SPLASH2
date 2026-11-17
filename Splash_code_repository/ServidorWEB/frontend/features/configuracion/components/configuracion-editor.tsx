@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { ErrorApi, api } from '@/lib/api'
 import type { AnalisisConfiguracion, ConfigCamara, ConfigPiscina, Configuracion, ModoProceso } from '@/lib/tipos'
@@ -227,7 +227,7 @@ export function ConfiguracionEditor() {
                     <option value={`${k.sensor_ancho_mm}x${k.sensor_alto_mm}`}>Personalizado</option>
                   )}
                 </select>
-                <span className="mt-1 block text-xs font-normal text-slate-400">El lente dice el formato (por ejemplo "1/3").</span>
+                <span className="mt-1 block text-xs font-normal text-slate-400">El lente dice el formato (por ejemplo &quot;1/3&quot;).</span>
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <Campo etiqueta="Resolución: ancho" valor={k.ancho_px} alCambiar={(n) => camara({ ancho_px: n })} paso="1" sufijo="px" />
@@ -320,6 +320,7 @@ export function ConfiguracionEditor() {
               <section className="rounded-2xl border border-slate-200 bg-white p-5">
                 <h2 className="font-semibold">Precisión esperada</h2>
                 <p className="mt-1 text-xs text-slate-400">Error de posición por cada píxel mal marcado, a lo largo del carril.</p>
+                <div className="overflow-x-auto">
                 <table className="mt-3 w-full text-sm">
                   <tbody>
                     {precision.map((f) => (
@@ -331,6 +332,7 @@ export function ConfiguracionEditor() {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 <p className="mt-2 text-xs text-slate-400">Los segundos son el error de tiempo a 1,5 m/s. Es una estimación.</p>
               </section>
             )}

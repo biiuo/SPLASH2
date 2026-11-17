@@ -1,8 +1,8 @@
 // El contrato con la API (backend). Son solo tipos: la lógica de negocio (validar, evaluar, calcular la homografía)
 // vive en el backend. Si cambia una respuesta de la API, se cambia acá.
 
-export type Punto = [number, number]
-export type Matriz3 = [[number, number, number], [number, number, number], [number, number, number]]
+import type { Distorsion, Matriz3, Punto } from '@/domain/calibracion/geometria'
+export type { Distorsion, Matriz3, Punto } from '@/domain/calibracion/geometria'
 
 // ---------------------------------------------------------------- configuración
 
@@ -102,9 +102,6 @@ export type PuntosReferencia = {
   /** Para juzgar cada clic, en píxeles. */
   umbrales_error_px: { bueno: number; aceptable: number }
 }
-
-/** Curvatura del lente (la estima el backend): para dibujar la rejilla como la ve la cámara. */
-export type Distorsion = { k1: number; centro: Punto; escala: number }
 
 /** Dónde se cuenta la llegada a cada pared (m desde la de salida) si la cámara no la ve. null = en la pared. */
 export type Llegada = { inicio_m: number | null; fin_m: number | null }
@@ -246,51 +243,7 @@ export type Grupo = {
 /** Un nadador de la lista de todos, con los ids de MIS grupos en los que ya está. */
 export type NadadorDeLaLista = Nadador & { mis_grupos: string[] }
 
-export type EventoGuardado = {
-  id: string
-  carril: number
-  identidad: number | null
-  tipo: 'cruce_nodo' | 'viraje' | 'inicio_descanso' | 'fin_descanso'
-  nodo_m: number | null
-  ts_captura: string
-  /** false = inferido (no se estaba viendo al nadador). */
-  observado: boolean
-}
-
-export type TramoGuardado = {
-  id: string
-  carril: number
-  identidad: number | null
-  nodo_desde_m: number
-  nodo_hasta_m: number
-  t_inicio: string
-  t_fin: string
-  distancia_m: number
-  velocidad_ms: number
-  observado: boolean
-}
-
-/**
- * Un largo completo (de pared a pared), armado por el backend a partir de los tramos. `estimado` = alguno de sus
- * tramos no se vio: no es una medición confirmada.
- */
-export type Largo = {
-  numero: number
-  carril: number
-  desde_m: number
-  hasta_m: number
-  t_inicio: string
-  t_fin: string
-  duracion_s: number
-  velocidad_ms: number
-  estimado: boolean
-  /** Viraje + pausa desde el largo anterior (null en el primero). */
-  pausa_previa_s: number | null
-  /** Ids de los tramos que lo forman. */
-  tramos: string[]
-}
-
-export type ResultadosSesion = { eventos: EventoGuardado[]; tramos: TramoGuardado[]; largos: Largo[]; largo_m: number }
+export type { EventoGuardado, TramoGuardado, Largo, ResultadosSesion } from '@/domain/sesion/resultados'
 
 /** Una sesión del historial, con el resumen de lo medido (GET /api/sesiones). */
 export type ResumenCarril = {
@@ -322,23 +275,7 @@ export type ResumenSesion = Omit<Sesion, 'carriles'> & {
   por_carril: ResumenCarril[]
 }
 
-/** Una calibración del historial. Cada una es una posición de la cámara, con sus zonas. */
-export type CalibracionResumen = {
-  id: string
-  nombre: string | null
-  /** Tamaño de la imagen sobre la que se calibró: las zonas se guardan en esos píxeles. */
-  image_size: [number, number]
-  creada: string
-  completa: boolean
-  rmse_m: number | null
-  cruzado_m: number | null
-  n_puntos: number
-  /** Nombres de las zonas guardadas (vacío si todavía no tiene). */
-  zonas: string[]
-  activa: boolean
-  /** Si se guardó la imagen sobre la que se calibró. */
-  tiene_imagen: boolean
-}
+export type { CalibracionResumen } from '@/domain/calibracion/calibracion-resumen'
 
 // ---------------------------------------------------------------- administración
 

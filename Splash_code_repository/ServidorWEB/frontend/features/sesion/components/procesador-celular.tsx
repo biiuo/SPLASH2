@@ -1,9 +1,9 @@
 'use client'
 
 import { Cpu, Smartphone } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
-import { ProcesadorCelular, type EstadoProceso, type VistaFrame } from '@/lib/celular/procesador'
+import { ProcesadorCelular, type EstadoProceso, type VistaFrame } from '@/infrastructure/vision/procesador'
 import { marcarQueProcesoAqui, procesoAqui, puedeProcesarAqui, urlModelo, urlStream } from '@/lib/modo'
 import type { Sesion } from '@/lib/tipos'
 
@@ -16,16 +16,23 @@ const COLOR_FASE: Record<EstadoProceso['fase'], string> = {
   detenido: 'bg-slate-100 text-slate-700',
 }
 
+function suscribirAlmacenamiento(avisar: () => void) {
+  window.addEventListener('storage', avisar)
+  return () => window.removeEventListener('storage', avisar)
+}
+
+const sinProcesoEnServidor = () => false
+
 /**
  * Sesión con modo "celular": el modelo corre en el dispositivo que la inició (ver lib/modo.ts). Ese dispositivo procesa
  * solo; en los demás se ofrece tomar el relevo (por ejemplo, si el primero se quedó sin batería).
  */
 export function ProcesadorCelularPanel({ sesion }: { sesion: Sesion }) {
-  const [aqui, setAqui] = useState(false)
+  const [eleccion, setEleccion] = useState<{ sesionId: string; aqui: boolean } | null>(null)
+  const guardadoAqui = useSyncExternalStore(suscribirAlmacenamiento, () => procesoAqui(sesion.id), sinProcesoEnServidor)
+  const aqui = eleccion?.sesionId === sesion.id ? eleccion.aqui : guardadoAqui
   const [estado, setEstado] = useState<EstadoProceso | null>(null)
   const lienzo = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => setAqui(procesoAqui(sesion.id)), [sesion.id])
 
   useEffect(() => {
     if (!aqui || !sesion.calibracion_id) return
@@ -61,12 +68,12 @@ export function ProcesadorCelularPanel({ sesion }: { sesion: Sesion }) {
 
   function tomar() {
     marcarQueProcesoAqui(sesion.id)
-    setAqui(true)
+    setEleccion({ sesionId: sesion.id, aqui: true })
   }
 
   function soltar() {
     marcarQueProcesoAqui(null)
-    setAqui(false)
+    setEleccion({ sesionId: sesion.id, aqui: false })
     setEstado(null)
   }
 

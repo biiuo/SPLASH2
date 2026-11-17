@@ -39,7 +39,7 @@ export default function PerfilNadador({ params }: { params: Promise<{ id: string
             bajada={`${n.email ?? 'sin cuenta'}${n.telefono ? ` · ${n.telefono}` : ''} · ${grupos.map((g) => g.nombre).join(', ') || 'sin grupo'}`}
             accion={<Link href={`/entrenador/rendimiento?nadador=${n.id}`} className={BOTON.secundario}>Analizar rendimiento</Link>}
           />
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi icono={Waves} etiqueta="Distancia total" valor={Math.round(m.distancia_m).toLocaleString('es-CO')} unidad="m" nota={`${m.sesiones} sesiones · ${m.largos} largos`} />
             <Kpi icono={Gauge} etiqueta="Velocidad media" valor={m.velocidad_media_ms ? m.velocidad_media_ms.toFixed(2) : '—'} unidad="m/s" />
             <Kpi icono={TrendingUp} etiqueta="Mejor velocidad" valor={m.velocidad_max_ms ? m.velocidad_max_ms.toFixed(2) : '—'} unidad="m/s" nota="mejor marca, largo detectado" />

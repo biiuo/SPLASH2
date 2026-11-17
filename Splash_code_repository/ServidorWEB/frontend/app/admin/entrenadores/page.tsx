@@ -18,18 +18,19 @@ export default function EntrenadoresAdmin() {
   const [entrenadores, setEntrenadores] = useState<Usuario[]>([])
   const [nuevo, setNuevo] = useState({ entrenador: '', nombre: '' })
 
-  const cargar = useCallback(async () => {
-    try {
-      const [g, e, a] = await Promise.all([
+  const cargar = useCallback(() => {
+    return Promise.all([
         api.grupos(), // al administrador le llegan los grupos de todos
         api.adminUsuarios({ rol: 'entrenador', activo: 'true', porPagina: 50 }),
         api.adminUsuarios({ rol: 'administrador', activo: 'true', porPagina: 50 }),
       ])
-      setGrupos(g)
-      setEntrenadores([...e.usuarios, ...a.usuarios])
-    } catch (e) {
-      setAviso({ tipo: 'error', texto: e instanceof ErrorApi ? e.message : 'No se pudieron cargar los grupos.' })
-    }
+      .then(([g, e, a]) => {
+        setGrupos(g)
+        setEntrenadores([...e.usuarios, ...a.usuarios])
+      })
+      .catch((e: unknown) => {
+        setAviso({ tipo: 'error', texto: e instanceof ErrorApi ? e.message : 'No se pudieron cargar los grupos.' })
+      })
   }, [])
   useEffect(() => {
     void cargar()

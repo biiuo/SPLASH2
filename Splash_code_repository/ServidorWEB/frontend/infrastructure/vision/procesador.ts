@@ -6,8 +6,8 @@
 // Manda lo MISMO que el servidor: píxeles de la imagen de la calibración, carril, identidad y hora de captura en ms.
 // Siempre se procesa el frame más reciente: si el celular va lento, se saltan frames y el retraso no crece. La hora de
 // cada posición es la de captura del frame, así que saltar frames no cambia las medidas.
-import { ErrorApi, api } from '../api'
-import { calcularRecorte, escalar, type Zona } from '../zonas'
+import { ErrorApi, api } from '@/lib/api'
+import { calcularRecorte, escalar, type Zona } from '@/lib/zonas'
 import { TrayectoriasPorCarril, type Muestra } from './carriles'
 import { Detector, type Caja, type Rect } from './detector'
 import { cargarOrt, crearSesion } from './ort'

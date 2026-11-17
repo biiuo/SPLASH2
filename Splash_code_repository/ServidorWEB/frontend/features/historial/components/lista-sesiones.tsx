@@ -10,6 +10,7 @@ import { ErrorApi, api } from '@/lib/api'
 import { fechaCorta, formatearMetros, formatearVel, horaCorta } from '@/lib/largos'
 import { formatearDuracion } from '@/lib/resultados'
 import type { ResumenSesion, Sesion } from '@/lib/tipos'
+import { useParametroUrl } from '@/shared/hooks/use-parametro-url'
 
 const normal = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 const INICIAL = { nadador: '', entrenador: '', dia: '', estado: '' as '' | Sesion['estado'], errores: false }
@@ -22,14 +23,11 @@ export function ListaSesiones({ base, titulo, bajada }: { base: string; titulo: 
   const [sesiones, setSesiones] = useState<ResumenSesion[] | null>(null)
   const [problema, setProblema] = useState<string | null>(null)
   const [f, setF] = useState(INICIAL)
-  const [usuario, setUsuario] = useState<string | null>(null)
+  const usuarioUrl = useParametroUrl('usuario')
+  const [usuarioElegido, setUsuario] = useState<string | null | undefined>(undefined)
+  const usuario = usuarioElegido === undefined ? usuarioUrl : usuarioElegido
 
   useEffect(() => {
-    try {
-      setUsuario(new URLSearchParams(window.location.search).get('usuario'))
-    } catch {
-      /* sin URL */
-    }
     api.sesionesRecientes(500).then(setSesiones).catch((e) => setProblema(e instanceof ErrorApi ? e.message : 'No se pudieron cargar las sesiones.'))
   }, [])
 

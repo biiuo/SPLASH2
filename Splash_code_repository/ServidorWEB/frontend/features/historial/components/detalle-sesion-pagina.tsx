@@ -10,20 +10,16 @@ import { Aviso } from '@/components/nadador/ui'
 import { ErrorApi, api } from '@/lib/api'
 import { fechaCorta, horaCorta } from '@/lib/largos'
 import type { ResumenSesion } from '@/lib/tipos'
+import { useParametroUrl } from '@/shared/hooks/use-parametro-url'
 
 /** Detalle de una sesión que puede ver quien mira, con sus carriles (`?carril=` elige uno). */
 export function DetalleSesionPagina({ id, volver }: { id: string; volver: { href: string; texto: string } }) {
-  const [carril, setCarril] = useState<number | null>(null)
+  const carrilUrl = useParametroUrl('carril')
+  const carril = carrilUrl ? Number(carrilUrl) : null
   const [sesion, setSesion] = useState<ResumenSesion | null | undefined>(undefined)
   const [problema, setProblema] = useState<string | null>(null)
 
   useEffect(() => {
-    try {
-      const c = new URLSearchParams(window.location.search).get('carril')
-      if (c) setCarril(Number(c))
-    } catch {
-      /* sin URL */
-    }
     api
       .sesionesRecientes(500)
       .then((l) => setSesion(l.find((s) => s.id === id) ?? null))

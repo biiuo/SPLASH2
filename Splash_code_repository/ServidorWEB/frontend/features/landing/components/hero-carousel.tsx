@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ArrowRight, Menu, Waves, X } from 'lucide-react'
 import { SwimmerBar } from '@/components/swimmer-bar'
 import type { Usuario } from '@/lib/tipos'
@@ -96,6 +96,8 @@ export function HeroCarousel({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [imageKey, setImageKey] = useState(0)
   const [imageLoaded, setImageLoaded] = useState(true)
+  const mobileMenuId = useId()
+  const mobileMenuButton = useRef<HTMLButtonElement>(null)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
   const elapsedMsRef = useRef(0)
@@ -103,6 +105,17 @@ export function HeroCarousel({
   const animFrameRef = useRef<number>(0)
 
   const totalSlides = SLIDES_DATA.length
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    function cerrarConEscape(evento: KeyboardEvent) {
+      if (evento.key !== 'Escape') return
+      setMobileMenuOpen(false)
+      mobileMenuButton.current?.focus()
+    }
+    window.addEventListener('keydown', cerrarConEscape)
+    return () => window.removeEventListener('keydown', cerrarConEscape)
+  }, [mobileMenuOpen])
 
   const goToSlide = useCallback((index: number) => {
     elapsedMsRef.current = 0
@@ -130,7 +143,7 @@ export function HeroCarousel({
       const dt = Math.min(ts - lastTsRef.current, 100)
       lastTsRef.current = ts
 
-      if (autoAdvance) {
+      if (autoAdvance && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         elapsedMsRef.current += dt
         const pct = Math.min(100, (elapsedMsRef.current / SLIDE_DURATION_MS) * 100)
         if (progressBarRef.current) {
@@ -212,7 +225,7 @@ export function HeroCarousel({
       </div>
 
       {/* 2. NAVBAR SUPERIOR INTEGRADO SOBRE EL HERO */}
-      <header className="relative z-20 flex w-full items-center justify-between px-6 pt-5 pb-3 sm:px-12 lg:px-16">
+      <header className="relative z-20 flex w-full items-center justify-between gap-2 px-4 pt-5 pb-3 sm:px-12 lg:px-16">
         <button
           type="button"
           onClick={() => goToSlide(0)}
@@ -241,14 +254,14 @@ export function HeroCarousel({
           </span>
         </nav>
 
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-4">
           {usuario ? (
             <button
               type="button"
               onClick={onPanel}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#1D63ED] px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-500 sm:text-sm"
+              className="inline-flex min-h-11 min-w-0 cursor-pointer items-center gap-2 rounded-full bg-[#1D63ED] px-3 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-500 sm:min-h-0 sm:px-5 sm:text-sm"
             >
-              <span>Ir a mi panel · {usuario.nombre.split(' ')[0]}</span>
+              <span className="truncate">Ir a mi panel · {usuario.nombre.split(' ')[0]}</span>
               <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
@@ -263,7 +276,7 @@ export function HeroCarousel({
               <button
                 type="button"
                 onClick={onSignup}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#1D63ED] px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-500 sm:text-sm"
+                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-[#1D63ED] px-3 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-500 sm:min-h-0 sm:px-5 sm:text-sm"
               >
                 <span>Crear cuenta</span>
                 <span aria-hidden="true">→</span>
@@ -272,10 +285,13 @@ export function HeroCarousel({
           )}
 
           <button
+            ref={mobileMenuButton}
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="rounded-lg p-2 text-white md:hidden hover:bg-white/10"
-            aria-label="Abrir menú"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-white md:hidden hover:bg-white/10"
+            aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+            aria-expanded={mobileMenuOpen}
+            aria-controls={mobileMenuId}
           >
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
@@ -283,6 +299,7 @@ export function HeroCarousel({
       </header>
 
       {/* Menú móvil desplegable */}
+      <div id={mobileMenuId} hidden={!mobileMenuOpen}>
       {mobileMenuOpen && (
         <div className="relative z-30 mx-5 flex flex-col gap-3 rounded-2xl border border-white/15 bg-slate-950/90 p-5 shadow-2xl backdrop-blur-xl md:hidden">
           <button
@@ -332,6 +349,7 @@ export function HeroCarousel({
           )}
         </div>
       )}
+      </div>
 
       {/* 3. CONTENIDO PRINCIPAL DEL CARRUSEL (Rail editorial + Texto Hero + Tarjetas Preview) */}
       <div className="relative z-20 mx-auto my-auto grid w-full max-w-[1440px] grid-cols-1 items-center gap-8 px-6 pt-4 pb-28 sm:px-12 sm:pb-32 lg:grid-cols-12 lg:gap-6 lg:px-16">
@@ -346,9 +364,9 @@ export function HeroCarousel({
               {pad2(currentSlide + 1)}
             </span>
             <div className="relative my-3 flex flex-1 w-[2px] flex-col items-center justify-between rounded-full bg-white/20 py-1">
-              {SLIDES_DATA.map((_, idx) => (
+              {SLIDES_DATA.map((slide, idx) => (
                 <button
-                  key={idx}
+                  key={slide.id}
                   type="button"
                   aria-label={`Ir a diapositiva ${idx + 1}`}
                   onClick={() => goToSlide(idx)}
@@ -403,18 +421,18 @@ export function HeroCarousel({
         </div>
 
         {/* Columna Derecha: Tarjetas preview + Controles de carrusel */}
-        <div className="flex flex-col items-start justify-center space-y-4 lg:col-span-6 lg:items-end">
+        <div className="flex min-w-0 flex-col items-start justify-center space-y-4 lg:col-span-6 lg:items-end">
           {/* Deck de tarjetas horizontales interactivas */}
           <div
             id="carouselCardsDeck"
-            className="flex w-full items-stretch gap-4 overflow-x-auto pb-2 lg:justify-end"
+            className="hidden w-full items-stretch gap-4 overflow-x-auto pb-2 sm:flex lg:justify-start xl:justify-end"
           >
             {previewCards.map(({ item, targetIdx, isNext }) => (
               <button
                 key={targetIdx}
                 type="button"
                 onClick={() => goToSlide(targetIdx)}
-                className={`group relative h-56 w-40 flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl text-left transition-all duration-300 sm:h-64 sm:w-48 border ${
+                className={`group relative h-56 w-40 flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl text-left transition-all duration-300 sm:h-64 sm:w-48 lg:w-32 xl:w-48 border ${
                   isNext
                     ? 'border-sky-300/70 shadow-2xl shadow-sky-950/60 scale-[1.02]'
                     : 'border-white/20 opacity-85 hover:border-white/50 hover:opacity-100'
@@ -456,7 +474,7 @@ export function HeroCarousel({
                 type="button"
                 onClick={goPrev}
                 aria-label="Diapositiva anterior"
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/25 bg-white/10 text-white backdrop-blur-md transition hover:bg-white/25"
+                className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-white/25 bg-white/10 text-white backdrop-blur-md transition hover:bg-white/25 sm:h-10 sm:w-10"
               >
                 ←
               </button>
@@ -464,14 +482,14 @@ export function HeroCarousel({
                 type="button"
                 onClick={goNext}
                 aria-label="Siguiente diapositiva"
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/30 bg-white/15 text-white backdrop-blur-md transition hover:bg-white/30"
+                className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-white/30 bg-white/15 text-white backdrop-blur-md transition hover:bg-white/30 sm:h-10 sm:w-10"
               >
                 →
               </button>
               <button
                 type="button"
                 onClick={() => setAutoAdvance(!autoAdvance)}
-                className="cursor-pointer rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-slate-200 backdrop-blur-md transition hover:bg-white/20"
+                className="min-h-11 cursor-pointer rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-slate-200 backdrop-blur-md transition hover:bg-white/20 sm:min-h-0"
               >
                 {autoAdvance ? 'Auto: Activo' : 'Auto: Pausado'}
               </button>

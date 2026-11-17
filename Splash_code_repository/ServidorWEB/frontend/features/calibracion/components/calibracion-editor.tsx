@@ -1,11 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useConfiguracion } from '@/lib/almacen-config'
 import { ErrorApi, api } from '@/lib/api'
-import { metrosAImagen } from '@/lib/proyeccion'
+import { metrosAImagen } from '@/domain/calibracion/proyeccion'
 import { aJpeg } from '@/lib/zonas'
 import type {
   Configuracion,
@@ -98,20 +98,20 @@ function CalibracionPantalla({
   const objetivoId = objetivo ?? ev?.siguiente?.id ?? null
   const objetivoRef = refs.find((r) => r.id === objetivoId) ?? null
 
-  const colorError = (e: number | undefined) => {
+  const colorError = useCallback((e: number | undefined) => {
     if (e === undefined) return '#2563eb'
     if (e <= umbrales.bueno) return '#10b981'
     if (e <= umbrales.aceptable) return '#f59e0b'
     return '#ef4444'
-  }
+  }, [umbrales])
   /** Los nodos se juzgan por el error del clic en píxeles: en metros, los lejanos siempre parecerían mal. */
   const umbralesPx = referencia.umbrales_error_px
-  const colorErrorPx = (e: number | undefined) => {
+  const colorErrorPx = useCallback((e: number | undefined) => {
     if (e === undefined) return '#2563eb'
     if (e <= umbralesPx.bueno) return '#10b981'
     if (e <= umbralesPx.aceptable) return '#f59e0b'
     return '#ef4444'
-  }
+  }, [umbralesPx])
 
   useEffect(() => {
     let vigente = true
@@ -200,7 +200,9 @@ function CalibracionPantalla({
   // ---- cargar el frame de referencia ----
   // los callbacks del video viven más que el render en que se crearon: leen el tamaño y las marcas actuales de acá
   const actual = useRef({ tam, marcas, marcasCuerda })
-  actual.current = { tam, marcas, marcasCuerda }
+  useEffect(() => {
+    actual.current = { tam, marcas, marcasCuerda }
+  }, [tam, marcas, marcasCuerda])
 
   function fijarBase(c: HTMLCanvasElement) {
     const nuevo: [number, number] = [c.width, c.height]
@@ -533,7 +535,7 @@ function CalibracionPantalla({
       ctx.strokeText(String(idx), m.px[0] + radio + gr, m.px[1] - radio)
       ctx.fillText(String(idx), m.px[0] + radio + gr, m.px[1] - radio)
     }
-  }, [base, marcas, marcasCuerda, modo, cuerdaActiva, llegada, ev, Hinv, dist, objetivoId, mostrarRejilla, opacidadGuias, g, ancho, refs, umbrales])
+  }, [base, marcas, marcasCuerda, modo, cuerdaActiva, llegada, ev, Hinv, dist, objetivoId, mostrarRejilla, opacidadGuias, g, ancho, refs, umbrales, colorError, colorErrorPx])
 
   // ---- guardar ----
   function archivoJson(): string | null {
@@ -631,9 +633,9 @@ function CalibracionPantalla({
           sistema convierte lo que ve la cámara en metros reales, y de ahí salen las distancias y las velocidades.
         </p>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* ---- lienzo ---- */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
             <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 text-sm font-semibold">
               {(['nodos', 'cuerdas'] as const).map((m) => (
                 <button
@@ -979,6 +981,7 @@ function CalibracionPantalla({
                 Con {config.camara.focal_mm} mm, {config.camara.altura_m} m de altura y {config.camara.distancia_borde_m} m al borde
                 (ángulo de {dv.fovHorizontal.toFixed(0)}°). Cuánto se equivoca la posición por cada píxel mal marcado.
               </p>
+              <div className="overflow-x-auto">
               <table className="mt-3 w-full text-sm">
                 <tbody>
                   {precision.map((f) => (
@@ -990,6 +993,7 @@ function CalibracionPantalla({
                   ))}
                 </tbody>
               </table>
+              </div>
               <p className="mt-2 text-xs text-slate-400">Los segundos son el error de tiempo para un nadador a 1,5 m/s.</p>
             </div>
 

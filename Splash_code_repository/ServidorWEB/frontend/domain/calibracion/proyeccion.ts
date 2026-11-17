@@ -1,4 +1,4 @@
-import type { Distorsion, Matriz3, Punto } from './tipos'
+import type { Distorsion, Matriz3, Punto } from './geometria'
 
 /**
  * Aplica una homografía a un punto (para dibujar sobre la imagen). Es solo la cuenta de proyectar: calcular

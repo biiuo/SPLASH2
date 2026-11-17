@@ -65,16 +65,17 @@ export function ZoneEditor() {
     setSinGuardar(true)
   }, [])
 
-  const cargarLista = useCallback(async () => {
-    try {
-      const lista = await api.historialCalibraciones()
-      setCalibraciones(lista)
-      setProblemaApi(null)
-      return lista
-    } catch (e) {
-      setProblemaApi(e instanceof ErrorApi ? e.message : 'No se pudieron cargar las calibraciones.')
-      return null
-    }
+  const cargarLista = useCallback(() => {
+    return api.historialCalibraciones()
+      .then((lista) => {
+        setCalibraciones(lista)
+        setProblemaApi(null)
+        return lista
+      })
+      .catch((e: unknown) => {
+        setProblemaApi(e instanceof ErrorApi ? e.message : 'No se pudieron cargar las calibraciones.')
+        return null
+      })
   }, [])
 
   // Al entrar: la de ?calibracion=..., o la activa, o la más nueva.
@@ -221,7 +222,7 @@ export function ZoneEditor() {
   }
 
   // ---- dibujar polígonos ----
-  function aImagen(e: React.MouseEvent<HTMLCanvasElement>): Punto {
+  function aImagen(e: React.PointerEvent<HTMLCanvasElement>): Punto {
     const canvas = e.currentTarget
     const r = canvas.getBoundingClientRect()
     return [((e.clientX - r.left) * canvas.width) / r.width, ((e.clientY - r.top) * canvas.height) / r.height]
@@ -390,25 +391,26 @@ export function ZoneEditor() {
           si la cámara se mueve, calibrá de nuevo y dibujá las zonas de la posición nueva.
         </p>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
+        <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           {/* ---- lienzo ---- */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
             {base ? (
               <canvas
                 ref={canvasRef}
-                onClick={(e) => {
+                onPointerUp={(e) => {
+                  if (e.button !== 0) return
                   // la posición se calcula YA: dentro de setActual(...) React la calcularía más tarde, cuando el
                   // evento ya no tiene el canvas (e.currentTarget = null) y la página se rompía
                   const p = aImagen(e)
                   setActual((a) => [...a, p])
                 }}
-                onMouseMove={(e) => setCursor(aImagen(e))}
-                onMouseLeave={() => setCursor(null)}
+                onPointerMove={(e) => setCursor(aImagen(e))}
+                onPointerLeave={() => setCursor(null)}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   setActual((a) => a.slice(0, -1))
                 }}
-                className="w-full cursor-crosshair rounded-xl"
+                className="w-full touch-none cursor-crosshair rounded-xl"
               />
             ) : (
               <div className="flex aspect-video items-center justify-center rounded-xl border-2 border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">

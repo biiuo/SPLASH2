@@ -35,12 +35,8 @@ export function BuscadorNadador({
   // busca un ratito después de dejar de escribir; descarta respuestas viejas
   useEffect(() => {
     const t = texto.trim()
-    if (t.length < 3) {
-      setSugerencias([])
-      return
-    }
+    if (t.length < 3) return
     const n = ++pedido.current
-    setBuscando(true)
     const espera = setTimeout(() => {
       api
         .sugerirNadadores(t)
@@ -70,6 +66,7 @@ export function BuscadorNadador({
     if (t.includes('@')) {
       setAbierto(false)
       setTexto('')
+      setSugerencias([])
       await alEscribirCorreo(t)
     }
   }
@@ -90,7 +87,10 @@ export function BuscadorNadador({
           placeholder={placeholder}
           autoComplete="off"
           onChange={(e) => {
-            setTexto(e.target.value)
+            const valor = e.target.value
+            setTexto(valor)
+            if (valor.trim().length < 3) setSugerencias([])
+            else setBuscando(true)
             setAbierto(true)
           }}
           onFocus={() => setAbierto(true)}
