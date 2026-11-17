@@ -20,6 +20,13 @@ import type {
   Sesion,
   ResumenSesion,
   Usuario,
+  Monitoreo,
+  ResumenAdmin,
+  Rol,
+  EstadoComponente,
+  Objetivo,
+  TipoObjetivo,
+  Nadador,
 } from './tipos'
 import type { ArchivoZonas, Zona } from './zonas'
 
@@ -67,10 +74,13 @@ function avisarSinSesion() {
 
 export const api = {
   // ---- cuenta (el token lo guarda la web en una cookie que el navegador no puede leer) ----
-  registrarse: (d: { email: string; nombre: string; contrasena: string; rol: 'nadador' | 'entrenador' }) =>
+  registrarse: (d: { email: string; nombre: string; contrasena: string; rol: 'nadador' | 'entrenador'; telefono?: string | null }) =>
     pedir<{ usuario: Usuario }>('auth/registro', 'POST', d),
   ingresar: (d: { email: string; contrasena: string }) => pedir<{ usuario: Usuario }>('auth/ingresar', 'POST', d),
   yo: () => pedir<Usuario>('auth/yo'),
+  /** Cambia el nombre propio (el token nuevo lo guarda la web en la cookie). */
+  actualizarPerfil: (d: { nombre?: string; telefono?: string | null }) => pedir<{ usuario: Usuario }>('auth/yo', 'PATCH', d),
+  cambiarContrasena: (d: { actual: string; nueva: string }) => pedir<{ ok: true }>('auth/yo/contrasena', 'POST', d),
   salir: () => fetch('/api/auth/salir', { method: 'POST' }).then(() => undefined),
 
   configuracion: () => pedir<ConfiguracionEfectiva>('configuracion'),
@@ -95,6 +105,10 @@ export const api = {
     pedir<(ArchivoCalibracion & { id: string; nombre: string | null; zonas: Zona[] | null; llegada: Llegada | null }) | null>('calibracion'),
   historialCalibraciones: () => pedir<CalibracionResumen[]>('calibracion/historial'),
   activarCalibracion: (id: string) => pedir<{ id: string }>(`calibracion/${encodeURIComponent(id)}/activar`, 'POST'),
+  /** Ninguna calibración queda activa. */
+  desactivarCalibracion: () => pedir<{ id: null }>('calibracion/desactivar', 'POST'),
+  /** Borra una calibración del historial (no la activa ni una en uso). */
+  eliminarCalibracion: (id: string) => pedir<{ id: string }>(`calibracion/${encodeURIComponent(id)}`, 'DELETE'),
   /** Cambia el nombre, las zonas y/o la imagen (lo que no venga queda igual; null lo borra). */
   actualizarCalibracion: (id: string, cambios: { nombre?: string | null; zonas?: Zona[] | null; imagen?: string | null }) =>
     pedir<CalibracionGuardada>(`calibracion/${encodeURIComponent(id)}`, 'PATCH', cambios),
@@ -157,12 +171,17 @@ export const api = {
   borrarGrupo: (id: string) => pedir<null>(`grupos/${encodeURIComponent(id)}`, 'DELETE'),
   agregarAGrupo: (grupoId: string, nadadorId: string) =>
     pedir<Grupo>(`grupos/${encodeURIComponent(grupoId)}/nadadores`, 'POST', { nadador_id: nadadorId }),
+  /** Sugerencias mientras se escribe (3 letras o más): hasta 8 nadadores activos. */
+  sugerirNadadores: (q: string) => pedir<Nadador[]>(`grupos/buscar-nadadores?q=${encodeURIComponent(q)}`),
+  /** Agrega por el correo de la cuenta (así un entrenador suma a alguien que todavía no está en sus grupos). */
+  agregarAGrupoPorEmail: (grupoId: string, email: string) => pedir<Grupo>(`grupos/${encodeURIComponent(grupoId)}/nadadores`, 'POST', { email }),
   quitarDeGrupo: (grupoId: string, nadadorId: string) =>
     pedir<Grupo>(`grupos/${encodeURIComponent(grupoId)}/nadadores/${encodeURIComponent(nadadorId)}`, 'DELETE'),
   /** Todos los nadadores registrados (entrenador y administrador). */
   todosLosNadadores: () => pedir<NadadorDeLaLista[]>('grupos/nadadores'),
   /** Para un nadador: los grupos en los que está, con su entrenador. */
-  misGruposComoNadador: () => pedir<{ id: string; nombre: string; entrenador: string }[]>('grupos/mios'),
+  misGruposComoNadador: () =>
+    pedir<{ id: string; nombre: string; entrenador: string; entrenador_email?: string | null; entrenador_telefono?: string | null }[]>('grupos/mios'),
   finalizarSesion: (id: string) => pedir<Sesion>(`sesiones/${encodeURIComponent(id)}/finalizar`, 'POST'),
   resultadosSesion: (id: string) => pedir<ResultadosSesion>(`sesiones/${encodeURIComponent(id)}/resultados`),
   /** Lo que manda quien mide (aquí, el celular): posiciones en píxeles de la imagen de la calibración. */
@@ -172,4 +191,35 @@ export const api = {
       'POST',
       { muestras },
     ),
+
+  // ---- administración (solo administrador) ----
+  adminResumen: () => pedir<ResumenAdmin>('admin/resumen'),
+  /** Una página de cuentas (10 por defecto) y el total que cumple el filtro. */
+  adminUsuarios: (f: { texto?: string; rol?: Rol | ''; activo?: '' | 'true' | 'false'; pagina?: number; porPagina?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (f.texto) q.set('texto', f.texto)
+    if (f.rol) q.set('rol', f.rol)
+    if (f.activo) q.set('activo', f.activo)
+    if (f.pagina) q.set('pagina', String(f.pagina))
+    if (f.porPagina) q.set('por_pagina', String(f.porPagina))
+    return pedir<{ usuarios: Usuario[]; total: number; pagina: number; por_pagina: number }>(`admin/usuarios${q.size ? `?${q}` : ''}`)
+  },
+  adminCrearGrupo: (entrenadorId: string, nombre: string) => pedir<Grupo>('admin/grupos', 'POST', { entrenador_id: entrenadorId, nombre }),
+  adminAsignarGrupo: (grupoId: string, entrenadorId: string) => pedir<Grupo>(`admin/grupos/${encodeURIComponent(grupoId)}`, 'PATCH', { entrenador_id: entrenadorId }),
+  adminCrearUsuario: (d: { email: string; nombre: string; contrasena: string; rol: Rol; telefono?: string | null }) => pedir<Usuario>('admin/usuarios', 'POST', d),
+  adminActualizarUsuario: (id: string, d: { nombre?: string; telefono?: string | null; rol?: Rol; activo?: boolean }) =>
+    pedir<Usuario>(`admin/usuarios/${encodeURIComponent(id)}`, 'PATCH', d),
+  adminRestablecerContrasena: (id: string, nueva: string) => pedir<{ ok: true }>(`admin/usuarios/${encodeURIComponent(id)}/contrasena`, 'POST', { nueva }),
+  adminMonitoreo: () => pedir<Monitoreo>('admin/monitoreo'),
+
+  // ---- objetivos ----
+  objetivos: () => pedir<Objetivo[]>('objetivos'),
+  misObjetivos: () => pedir<Objetivo[]>('objetivos/mios'),
+  crearObjetivo: (d: { nadador_id: string; tipo: TipoObjetivo; meta: number; desde: string; hasta: string; descripcion?: string | null }) =>
+    pedir<Objetivo>('objetivos', 'POST', d),
+  actualizarObjetivo: (id: string, d: Partial<{ tipo: TipoObjetivo; meta: number; desde: string; hasta: string; descripcion: string | null }>) =>
+    pedir<Objetivo>(`objetivos/${encodeURIComponent(id)}`, 'PATCH', d),
+  borrarObjetivo: (id: string) => pedir<null>(`objetivos/${encodeURIComponent(id)}`, 'DELETE'),
+  /** Servidor de IA y cámara (para el monitoreo del entrenador). */
+  estadoComponentes: () => pedir<EstadoComponente[]>('latidos'),
 }

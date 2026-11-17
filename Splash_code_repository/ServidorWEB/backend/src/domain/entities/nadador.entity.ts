@@ -4,6 +4,7 @@ export type Nadador = {
   usuario_id: string | null
   nombre: string
   email: string | null
+  telefono?: string | null
 }
 
 /** Un grupo de un entrenador, con sus nadadores. */
@@ -12,6 +13,9 @@ export type Grupo = {
   entrenador_id: string
   /** Nombre del entrenador. */
   entrenador: string
+  /** Contacto del entrenador (lo ven los nadadores del grupo). */
+  entrenador_email?: string | null
+  entrenador_telefono?: string | null
   nombre: string
   nadadores: Nadador[]
 }

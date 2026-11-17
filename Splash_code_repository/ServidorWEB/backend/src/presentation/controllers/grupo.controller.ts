@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common'
 import {
   ApiBody,
   ApiConflictResponse,
@@ -51,10 +51,21 @@ export class GrupoController {
 
   @Get('nadadores')
   @Roles(...ENTRENAN)
-  @ApiOperation({ summary: 'Todos los nadadores', description: 'Los nadadores registrados y en cuáles de mis grupos están (`mis_grupos`).' })
+  @ApiOperation({
+    summary: 'Nadadores visibles',
+    description: 'Un entrenador ve solo a los nadadores de sus grupos (a uno nuevo lo agrega por correo); el administrador, a todos. `mis_grupos` = en cuáles de los grupos visibles está.',
+  })
   @ApiOkResponse({ description: '`[{ id, nombre, email, mis_grupos: [id] }]`' })
   todos(@Solicitante() s: TipoSolicitante) {
     return this.grupos.todos(persona(s))
+  }
+
+  @Get('buscar-nadadores')
+  @Roles(...ENTRENAN)
+  @ApiOperation({ summary: 'Sugerir nadadores', description: '`?q=` (3 letras o más): hasta 8 nadadores activos cuyo correo o nombre lo contiene. Para autocompletar al sumar a un grupo.' })
+  @ApiOkResponse({ description: '`[{ id, nombre, email }]`' })
+  sugerir(@Query('q') q?: string) {
+    return this.grupos.sugerir(q)
   }
 
   @Get('mios')

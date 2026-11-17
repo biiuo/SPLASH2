@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 import { GrupoPanel } from '@/components/grupo-panel'
 import { HistorialSesiones } from '@/components/historial-sesiones'
@@ -52,6 +53,11 @@ export function SafeSplashApp() {
     return <AuthScreen mode={view} onBack={() => setView('home')} onSignup={() => setView('signup')} onLogin={() => setView('login')} />
   }
 
+  // cada rol con su módulo: /nadador, /entrenador y /admin, cada uno con su menú lateral
+  if (view === 'panel' && cuenta.usuario?.rol === 'nadador') return <IrAlModulo a="/nadador" />
+  if (view === 'panel' && cuenta.usuario?.rol === 'administrador') return <IrAlModulo a="/admin" />
+  if (view === 'panel' && cuenta.usuario?.rol === 'entrenador') return <IrAlModulo a="/entrenador" />
+
   if (view === 'panel' && cuenta.usuario) {
     const esEntrenador = puedeCalibrar(cuenta.usuario)
     return (
@@ -93,6 +99,13 @@ export function SafeSplashApp() {
   )
 }
 
+/** El nadador (/nadador) y el administrador (/admin) tienen su propio módulo con menú lateral. */
+function IrAlModulo({ a }: { a: string }) {
+  const router = useRouter()
+  useEffect(() => router.replace(a), [router, a])
+  return <main className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Abriendo tu panel…</main>
+}
+
 function Step({ number, icon: Icon, title, copy }: { number: string; icon: typeof Activity; title: string; copy: string }) { return <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><span className="text-xs font-bold text-blue-600">{number}</span><Icon className="size-5 text-blue-600" /></div><h3 className="mt-7 font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{copy}</p></div> }
 
 const CAMPO = 'mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-50'
@@ -104,6 +117,7 @@ function AuthScreen({ mode, onBack, onSignup, onLogin }: { mode: 'login' | 'sign
   const [contrasena, setContrasena] = useState('')
   const [nombre, setNombre] = useState('')
   const [rol, setRol] = useState<'nadador' | 'entrenador'>('nadador')
+  const [telefono, setTelefono] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [errores, setErrores] = useState<string[]>([])
 
@@ -113,7 +127,7 @@ function AuthScreen({ mode, onBack, onSignup, onLogin }: { mode: 'login' | 'sign
     setErrores([])
     try {
       if (isLogin) await cuenta.ingresar(email, contrasena)
-      else await cuenta.registrarse({ email, nombre, contrasena, rol })
+      else await cuenta.registrarse({ email, nombre, contrasena, rol, telefono: telefono.trim() || null })
     } catch (err) {
       setErrores(err instanceof ErrorApi ? (err.detalles.length > 0 ? err.detalles : [err.message]) : ['No se pudo conectar con el servidor.'])
     } finally {
@@ -125,6 +139,7 @@ function AuthScreen({ mode, onBack, onSignup, onLogin }: { mode: 'login' | 'sign
     <form onSubmit={enviar} className="mt-8 flex flex-col gap-4">
       {!isLogin && <label className="text-sm font-medium text-slate-700">Nombre completo<input required value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={80} autoComplete="name" placeholder="Tu nombre" className={CAMPO} /></label>}
       <label className="text-sm font-medium text-slate-700">Correo electrónico<input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="tu@email.com" className={CAMPO} /></label>
+      {!isLogin && <label className="text-sm font-medium text-slate-700">Teléfono <span className="font-normal text-slate-400">(opcional)</span><input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} autoComplete="tel" placeholder="+57 300 000 0000" className={CAMPO} /></label>}
       <label className="text-sm font-medium text-slate-700">Contraseña<input required type="password" value={contrasena} onChange={(e) => setContrasena(e.target.value)} minLength={isLogin ? undefined : 8} autoComplete={isLogin ? 'current-password' : 'new-password'} placeholder={isLogin ? '••••••••' : 'Al menos 8 caracteres'} className={CAMPO} /></label>
       {!isLogin && <fieldset className="text-sm font-medium text-slate-700"><legend>Soy</legend><div className="mt-2 grid grid-cols-2 gap-2">{(['nadador', 'entrenador'] as const).map((r) => <label key={r} className={`flex cursor-pointer items-center justify-center rounded-xl border px-4 py-3 transition ${rol === r ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}><input type="radio" name="rol" value={r} checked={rol === r} onChange={() => setRol(r)} className="sr-only" />{NOMBRE_ROL[r]}</label>)}</div></fieldset>}
       {errores.length > 0 && <ul role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{errores.map((e) => <li key={e}>{e}</li>)}</ul>}
@@ -165,16 +180,16 @@ function UserDashboard() {
       <p className="mt-2 text-sm text-slate-500">
         {grupos === undefined ? '' : grupos.length ? `Tus grupos: ${grupos.map((g) => `${g.nombre} (${g.entrenador})`).join(' · ')}` : 'Todavía no estás en ningún grupo. Igual podés sumarte a las sesiones libres de un entrenador.'}
       </p></div>
+    <Link href="/nadador" className="mb-6 flex items-center justify-between rounded-2xl border border-blue-100 bg-blue-50 p-5 text-blue-800 hover:bg-blue-100"><span><span className="block text-sm font-semibold">Tus largos y velocidad</span><span className="text-sm text-blue-700">Tiempo de cada largo, gráficos y descarga en .txt</span></span><ArrowRight className="size-5" /></Link>
     <SesionPanel titulo="Tu sesión" vacia="No tenés una sesión en curso. Elegí un carril: podés sumarte a la sesión de un entrenador (de tu grupo, o libre) o empezar una sesión personal." />
     <HistorialSesiones />
   </div>
 }
 
-/** Entrenador o administrador: calibración, la sesión en curso y el historial, todo desde la base. */
+/** Entrenador: sus sesiones, sus grupos y el historial. La configuración y la calibración son del administrador. */
 function TrainerDashboard() {
   return <div className="mx-auto max-w-6xl">
     <div className="mb-8"><p className="text-sm font-semibold text-blue-600">Vista general</p><h2 className="mt-1 text-3xl font-semibold tracking-tight">Entrenamiento</h2></div>
-    <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 p-5"><p className="text-sm font-semibold text-blue-800">Calibración del sistema</p><p className="mt-1 text-sm text-blue-700">Antes de la primera sesión, o si se mueve la cámara o el zoom.</p><div className="mt-4 flex flex-wrap gap-3"><Link href="/configuracion" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100">Piscina y cámara</Link><Link href="/calibracion" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100">Calibrar la homografía</Link><Link href="/zonas" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100">Zonas de análisis</Link><Link href="/calibracion/historial" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100">Calibraciones guardadas</Link></div></div>
     <SesionPanel />
     <GrupoPanel />
     <HistorialSesiones />

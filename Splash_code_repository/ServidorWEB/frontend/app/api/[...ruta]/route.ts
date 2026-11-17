@@ -85,7 +85,7 @@ async function reenviar(req: Request, { params }: { params: Promise<{ ruta: stri
   const respuesta = { status: r.status, headers: { 'Content-Type': r.headers.get('content-type') ?? 'application/json' } }
 
   // al ingresar o registrarse, el token queda en la cookie y al navegador solo le llega el usuario
-  if (r.ok && (camino === 'auth/ingresar' || camino === 'auth/registro')) {
+  if (r.ok && (camino === 'auth/ingresar' || camino === 'auth/registro' || (camino === 'auth/yo' && req.method === 'PATCH'))) {
     try {
       const { token: nuevo, usuario } = JSON.parse(texto) as { token: string; usuario: unknown }
       return new Response(JSON.stringify({ usuario }), {

@@ -19,6 +19,10 @@ export interface CalibracionRepository {
   listar(): Promise<CalibracionResumen[]>
   /** Deja esta calibración como la activa. false si no existe. */
   activar(id: string): Promise<boolean>
+  /** Ninguna queda activa (todas siguen en el historial). */
+  desactivar(): Promise<void>
+  /** La borra (con sus zonas e imagen). Las sesiones que la usaron quedan sin calibración. false si no existe. */
+  eliminar(id: string): Promise<boolean>
   /** Cambia el nombre y/o las zonas (lo que venga; undefined = no tocar). null si no existe. */
   actualizar(id: string, cambios: ExtrasCalibracion): Promise<CalibracionGuardada | null>
   /** La imagen (JPEG) de una calibración, o null si no existe o no tiene. Va aparte: pesa y casi nunca hace falta. */

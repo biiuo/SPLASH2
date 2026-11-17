@@ -5,6 +5,8 @@ import { JwtModule, JwtService } from '@nestjs/jwt'
 import {
   CrearAdministradorInicialUseCase,
   IngresarUseCase,
+  ActualizarPerfilUseCase,
+  CambiarContrasenaUseCase,
   ObtenerPerfilUseCase,
   RegistrarseUseCase,
 } from '../../application/use-cases/auth/auth.usecases'
@@ -37,12 +39,22 @@ const DURACION_SESION = '12h'
     },
     { provide: ObtenerPerfilUseCase, useFactory: (u: UsuarioRepository) => new ObtenerPerfilUseCase(u), inject: [USUARIO_REPOSITORY] },
     {
+      provide: ActualizarPerfilUseCase,
+      useFactory: (u: UsuarioRepository, t: EmisorTokens) => new ActualizarPerfilUseCase(u, t),
+      inject: [USUARIO_REPOSITORY, EMISOR_TOKENS],
+    },
+    {
+      provide: CambiarContrasenaUseCase,
+      useFactory: (u: UsuarioRepository, c: CifradorContrasenas) => new CambiarContrasenaUseCase(u, c),
+      inject: [USUARIO_REPOSITORY, CIFRADOR_CONTRASENAS],
+    },
+    {
       provide: CrearAdministradorInicialUseCase,
       useFactory: (u: UsuarioRepository, c: CifradorContrasenas) => new CrearAdministradorInicialUseCase(u, c),
       inject: [USUARIO_REPOSITORY, CIFRADOR_CONTRASENAS],
     },
   ],
-  exports: [EMISOR_TOKENS],
+  exports: [EMISOR_TOKENS, CIFRADOR_CONTRASENAS],
 })
 export class AuthModule implements OnApplicationBootstrap {
   private readonly log = new Logger('Auth')

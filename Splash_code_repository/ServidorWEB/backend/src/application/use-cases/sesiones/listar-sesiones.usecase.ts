@@ -3,7 +3,7 @@ import type { SesionRepository } from '../../../domain/repositories/sesion.repos
 import { ValidacionException } from '../../exceptions/aplicacion.exceptions'
 
 export const LIMITE_POR_DEFECTO = 20
-export const LIMITE_MAXIMO = 100
+export const LIMITE_MAXIMO = 500
 
 /** Historial: las últimas sesiones con el resumen de lo medido (carriles, tramos, distancia, velocidad media). */
 export class ListarSesionesUseCase {

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Activity, Lock, Play, Square, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -18,10 +19,11 @@ const CADA_MS = 2000
 type Eleccion = 'no' | 'reservar' | string
 
 /** Agrega lo nuevo sin repetir: si la IA reenvió un lote, llegan ids que ya estaban. */
-function sumar(previos: ResultadosSesion, nuevos: ResultadosSesion): ResultadosSesion {
+function sumar(previos: ResultadosSesion, nuevos: Pick<ResultadosSesion, 'eventos' | 'tramos'>): ResultadosSesion {
   const eventos = new Set(previos.eventos.map((e) => e.id))
   const tramos = new Set(previos.tramos.map((t) => t.id))
   return {
+    ...previos, // los avisos en vivo traen eventos y tramos sueltos; los largos se recalculan al pedir los resultados
     eventos: [...previos.eventos, ...nuevos.eventos.filter((e) => !eventos.has(e.id))],
     tramos: [...previos.tramos, ...nuevos.tramos.filter((t) => !tramos.has(t.id))],
   }
@@ -99,9 +101,9 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
     avisos.onopen = () => void actualizar()
     for (const tipo of ['sesion_iniciada', 'sesion_finalizada', 'carriles']) avisos.addEventListener(tipo, () => void actualizar())
     avisos.addEventListener('resultados', (e) => {
-      const nuevo = leer<ResultadosSesion & { sesion_id: string }>(e)
+      const nuevo = leer<Pick<ResultadosSesion, 'eventos' | 'tramos'> & { sesion_id: string }>(e)
       if (nuevo.sesion_id !== sesionId.current) return
-      setResultados((previos) => sumar(previos ?? { eventos: [], tramos: [] }, nuevo))
+      setResultados((previos) => sumar(previos ?? { eventos: [], tramos: [], largos: [], largo_m: 25 }, nuevo))
     })
     avisos.onerror = () => {
       if (avisos.readyState === EventSource.CLOSED) preguntarCadaTanto()
@@ -250,6 +252,14 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
           <p className="text-sm font-medium text-slate-700">
             {esNadador ? 'Elegí un carril' : 'Elegí los carriles y quién va en cada uno'}
           </p>
+          {!esNadador && candidatos.length === 0 && (
+            <p className="mt-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {grupoSesion
+                ? 'Este grupo no tiene nadadores todavía. '
+                : 'Todavía no tenés nadadores en tus grupos: solo podés reservar carriles. '}
+              Sumalos en <Link href="/entrenador/nadadores" className="font-semibold underline">Mis nadadores</Link> (crear un grupo → «Agregar por correo»), o pedile al administrador que te asigne un grupo.
+            </p>
+          )}
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             {carriles.map((c) => (
               <div key={c.carril} className={`rounded-xl border p-4 ${ESTILO_CARRIL[c.estado]} ${carrilElegido === c.carril ? 'ring-2 ring-blue-500' : ''}`}>
@@ -396,13 +406,15 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
                       <td className="py-3 pr-4 font-semibold">
                         Carril {c.carril}
                         <span className="block text-xs font-normal text-slate-400">{sesion.carriles.find((a) => a.carril === c.carril)?.nadador ?? ''}</span>
+                        <Link href={esNadador ? `/nadador/sesiones/${sesion.id}` : `/entrenador/historial/${sesion.id}?carril=${c.carril}`} className="block text-xs font-medium text-blue-600 hover:underline">
+                          Ver largos y gráficos
+                        </Link>
                       </td>
                       <td className="py-3 pr-4">{c.ultimoNodo_m === null ? '—' : `${c.ultimoNodo_m} m`}</td>
                       <td className="py-3 pr-4">{formatearVelocidad(c.ultimaVelocidad_ms)}</td>
                       <td className="py-3 pr-4">{formatearVelocidad(c.velocidadMedia_ms)}</td>
                       <td className="py-3 pr-4">
                         {c.tramos}
-                        {c.inferidos > 0 && <span className="ml-1 text-xs text-amber-600" title="Incluyen algo que no se llegó a ver">({c.inferidos} estimados)</span>}
                       </td>
                       <td className="py-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${c.enDescanso ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>

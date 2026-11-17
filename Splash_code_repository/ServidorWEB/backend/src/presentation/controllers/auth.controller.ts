@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common'
 import {
   ApiBearerAuth,
   ApiBody,
@@ -12,6 +12,8 @@ import {
 
 import {
   IngresarUseCase,
+  ActualizarPerfilUseCase,
+  CambiarContrasenaUseCase,
   ObtenerPerfilUseCase,
   RegistrarseUseCase,
   type IngresoEntrada,
@@ -28,6 +30,8 @@ export class AuthController {
     private readonly registrarse: RegistrarseUseCase,
     private readonly ingresar: IngresarUseCase,
     private readonly perfil: ObtenerPerfilUseCase,
+    private readonly actualizarPerfil: ActualizarPerfilUseCase,
+    private readonly cambiarContrasena: CambiarContrasenaUseCase,
   ) {}
 
   @Publico()
@@ -71,5 +75,31 @@ export class AuthController {
   yo(@Solicitante() s: TipoSolicitante) {
     if (s.tipo !== 'usuario') throw new ProhibidoException()
     return this.perfil.execute(s.id)
+  }
+
+  @Patch('yo')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cambiar mis datos',
+    description: 'El nombre y/o el teléfono: el correo, el rol y el estado de la cuenta no se cambian desde acá. Devuelve un token nuevo (el anterior lleva el nombre viejo).',
+  })
+  @ApiBody({ schema: { type: 'object' }, examples: { nombre: { summary: 'Nombre', value: { nombre: 'Luis Pardo' } } } })
+  @ApiOkResponse({ description: '`{ token, usuario }`' })
+  @ApiUnauthorizedResponse({ description: 'Sin sesión, o venció.' })
+  cambiarDatos(@Solicitante() s: TipoSolicitante, @Body() cuerpo: { nombre?: unknown; telefono?: unknown }) {
+    if (s.tipo !== 'usuario') throw new ProhibidoException()
+    return this.actualizarPerfil.execute(s.id, cuerpo)
+  }
+
+  @Post('yo/contrasena')
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cambiar mi contraseña', description: 'Pide la contraseña actual. La nueva sigue las mismas reglas que al crear la cuenta.' })
+  @ApiBody({ schema: { type: 'object' }, examples: { cambio: { summary: 'Cambio', value: { actual: 'clave-segura-2', nueva: 'otra-clave-segura' } } } })
+  @ApiOkResponse({ description: '`{ ok: true }`' })
+  @ApiUnauthorizedResponse({ description: 'Sin sesión, o venció.' })
+  contrasena(@Solicitante() s: TipoSolicitante, @Body() cuerpo: { actual?: unknown; nueva?: unknown }) {
+    if (s.tipo !== 'usuario') throw new ProhibidoException()
+    return this.cambiarContrasena.execute(s.id, cuerpo)
   }
 }

@@ -23,3 +23,16 @@ export function problemasDeCuenta(datos: { email?: unknown; nombre?: unknown; co
   }
   return errores
 }
+
+const TELEFONO = /^\+?[0-9][0-9\s()-]{5,23}$/
+
+/**
+ * El teléfono (opcional): undefined = no vino (no tocar), null = borrarlo, o el número limpio.
+ * Lanza un texto de error si no parece un teléfono.
+ */
+export function telefonoDe(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined
+  if (v === null || (typeof v === 'string' && v.trim() === '')) return null
+  if (typeof v !== 'string' || !TELEFONO.test(v.trim())) throw new Error('El teléfono no es válido: usá solo números, espacios, guiones o + (de 6 a 24 caracteres).')
+  return v.trim()
+}

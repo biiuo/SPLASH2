@@ -5,10 +5,16 @@ import type { Rol } from '../../domain/entities/usuario.entity'
 import { GrupoRepetido, type GrupoRepository, type NadadorRepository } from '../../domain/repositories/nadador.repository'
 import { PrismaService } from '../persistence/prisma.service'
 
-const CON_CUENTA = { usuario: { select: { email: true } } } as const
+const CON_CUENTA = { usuario: { select: { email: true, telefono: true } } } as const
 
-type FilaNadador = { id: string; usuario_id: string | null; nombre: string; usuario: { email: string } | null }
-const aNadador = (f: FilaNadador): Nadador => ({ id: f.id, usuario_id: f.usuario_id, nombre: f.nombre, email: f.usuario?.email ?? null })
+type FilaNadador = { id: string; usuario_id: string | null; nombre: string; usuario: { email: string; telefono: string | null } | null }
+const aNadador = (f: FilaNadador): Nadador => ({
+  id: f.id,
+  usuario_id: f.usuario_id,
+  nombre: f.nombre,
+  email: f.usuario?.email ?? null,
+  telefono: f.usuario?.telefono ?? null,
+})
 
 @Injectable()
 export class PrismaNadadorRepository implements NadadorRepository {
@@ -43,6 +49,22 @@ export class PrismaNadadorRepository implements NadadorRepository {
     return filas.map(aNadador)
   }
 
+  async buscar(texto: string, limite: number): Promise<Nadador[]> {
+    const filas = await this.prisma.nadador.findMany({
+      where: {
+        usuario: {
+          activo: true,
+          rol: 'nadador',
+          OR: [{ email: { contains: texto, mode: 'insensitive' } }, { nombre: { contains: texto, mode: 'insensitive' } }],
+        },
+      },
+      orderBy: { nombre: 'asc' },
+      take: limite,
+      include: CON_CUENTA,
+    })
+    return filas.map(aNadador)
+  }
+
   async buscarPorEmail(email: string): Promise<{ usuario: { id: string; nombre: string; rol: Rol }; nadador: Nadador | null } | null> {
     const u = await this.prisma.usuario.findFirst({
       where: { email: { equals: email, mode: 'insensitive' } },
@@ -54,7 +76,7 @@ export class PrismaNadadorRepository implements NadadorRepository {
 }
 
 const CON_TODO = {
-  entrenador: { select: { nombre: true } },
+  entrenador: { select: { nombre: true, email: true, telefono: true } },
   nadadores: { include: { nadador: { include: CON_CUENTA } } },
 } as const
 
@@ -62,13 +84,15 @@ type FilaGrupo = {
   id: string
   entrenador_id: string
   nombre: string
-  entrenador: { nombre: string }
+  entrenador: { nombre: string; email: string; telefono: string | null }
   nadadores: { nadador: FilaNadador }[]
 }
 const aGrupo = (f: FilaGrupo): Grupo => ({
   id: f.id,
   entrenador_id: f.entrenador_id,
   entrenador: f.entrenador.nombre,
+  entrenador_email: f.entrenador.email,
+  entrenador_telefono: f.entrenador.telefono,
   nombre: f.nombre,
   nadadores: f.nadadores.map((n) => aNadador(n.nadador)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
 })
@@ -87,6 +111,11 @@ export class PrismaGrupoRepository implements GrupoRepository {
     return filas.map(aGrupo)
   }
 
+  async todos(): Promise<Grupo[]> {
+    const filas = await this.prisma.grupo.findMany({ orderBy: [{ entrenador: { nombre: 'asc' } }, { nombre: 'asc' }], include: CON_TODO })
+    return filas.map(aGrupo)
+  }
+
   async obtener(id: string): Promise<Grupo | null> {
     const f = await this.prisma.grupo.findUnique({ where: { id }, include: CON_TODO })
     return f ? aGrupo(f) : null
@@ -101,6 +130,15 @@ export class PrismaGrupoRepository implements GrupoRepository {
     try {
       const f = await this.prisma.grupo.create({ data: { entrenador_id: entrenadorId, nombre }, include: CON_TODO })
       return aGrupo(f)
+    } catch (e) {
+      if (esRepetido(e)) throw new GrupoRepetido()
+      throw e
+    }
+  }
+
+  async cambiarEntrenador(id: string, entrenadorId: string): Promise<Grupo> {
+    try {
+      return aGrupo(await this.prisma.grupo.update({ where: { id }, data: { entrenador_id: entrenadorId }, include: CON_TODO }))
     } catch (e) {
       if (esRepetido(e)) throw new GrupoRepetido()
       throw e

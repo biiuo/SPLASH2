@@ -1,11 +1,13 @@
 'use client'
 
 import { Activity, Gauge, History, Waves } from 'lucide-react'
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 
 import { ErrorApi, api } from '@/lib/api'
+import { useCuenta } from '@/lib/cuenta'
 import { formatearDuracion, formatearVelocidad } from '@/lib/resultados'
-import type { ResumenSesion } from '@/lib/tipos'
+import type { Grupo, ResumenSesion } from '@/lib/tipos'
 
 const SEMANA_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -14,7 +16,15 @@ const fecha = (iso: string) =>
 
 /** Totales de los últimos 7 días y la lista de las últimas sesiones, todo desde la base (GET /api/sesiones). */
 export function HistorialSesiones() {
+  const esNadador = useCuenta().usuario?.rol === 'nadador'
   const [sesiones, setSesiones] = useState<ResumenSesion[] | null>(null)
+  // el entrenador puede filtrar por grupo y ver quiénes lo forman
+  const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [grupoId, setGrupoId] = useState('')
+  useEffect(() => {
+    if (esNadador) return
+    api.grupos().then(setGrupos).catch(() => setGrupos([]))
+  }, [esNadador])
   const [problema, setProblema] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
@@ -36,8 +46,10 @@ export function HistorialSesiones() {
     return () => avisos.close()
   }, [cargar])
 
+  const grupo = grupos.find((g) => g.id === grupoId) ?? null
+  const delGrupo = (sesiones ?? []).filter((s) => !grupoId || (grupoId === 'libre' ? !s.grupo_id : s.grupo_id === grupoId))
   const desde = Date.now() - SEMANA_MS
-  const semana = (sesiones ?? []).filter((s) => Date.parse(s.inicio) >= desde)
+  const semana = delGrupo.filter((s) => Date.parse(s.inicio) >= desde)
   const metros = semana.reduce((a, s) => a + s.distancia_m, 0)
   const conVelocidad = semana.filter((s) => s.velocidad_media_ms !== null)
   const velocidad = conVelocidad.length ? conVelocidad.reduce((a, s) => a + (s.velocidad_media_ms ?? 0), 0) / conVelocidad.length : null
@@ -54,13 +66,27 @@ export function HistorialSesiones() {
         <div className="flex items-center gap-2">
           <History className="size-5 text-blue-600" />
           <h3 className="font-semibold">Sesiones recientes</h3>
+          {!esNadador && grupos.length > 0 && (
+            <select value={grupoId} onChange={(e) => setGrupoId(e.target.value)} className="ml-auto rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm" aria-label="Filtrar por grupo">
+              <option value="">Todos los grupos</option>
+              {grupos.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
+              <option value="libre">Sesiones libres</option>
+            </select>
+          )}
         </div>
+        {grupo && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-slate-500">{grupo.nombre}:</span>
+            {grupo.nadadores.length === 0 && <span className="text-slate-400">sin nadadores</span>}
+            {grupo.nadadores.map((n) => <span key={n.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">{n.nombre}</span>)}
+          </div>
+        )}
         {problema && <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800">{problema}</p>}
         {!problema && sesiones === null && <p className="mt-4 text-sm text-slate-500">Cargando…</p>}
-        {!problema && sesiones?.length === 0 && (
+        {!problema && sesiones !== null && delGrupo.length === 0 && (
           <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Todavía no hay sesiones. Aparecen aquí cuando se inicia la primera.</p>
         )}
-        {!problema && !!sesiones?.length && (
+        {!problema && delGrupo.length > 0 && (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[44rem] text-left text-sm">
               <thead className="text-xs uppercase tracking-wider text-slate-400">
@@ -76,7 +102,7 @@ export function HistorialSesiones() {
                 </tr>
               </thead>
               {/* un <tbody> por sesión: sus datos (inicio, duración, quién la inició) una vez, y debajo una fila por carril */}
-              {sesiones.map((s) => {
+              {delGrupo.map((s) => {
                 const filas = s.por_carril.length ? s.por_carril : [null]
                 const span = filas.length
                 return (
@@ -92,7 +118,14 @@ export function HistorialSesiones() {
                           </>
                         )}
                         <td className="py-2.5 pr-4">{c ? c.carril : '—'}</td>
-                        <td className="py-2.5 pr-4">{c?.nadador ?? '—'}</td>
+                        <td className="py-2.5 pr-4">
+                          {c?.nadador ?? '—'}
+                          {c && c.tramos > 0 && (
+                            <Link href={esNadador ? `/nadador/sesiones/${s.id}` : `/entrenador/historial/${s.id}?carril=${c.carril}`} className="block text-xs font-medium text-blue-600 hover:underline">
+                              Ver largos
+                            </Link>
+                          )}
+                        </td>
                         <td className="py-2.5 pr-4">{c ? c.tramos : '—'}</td>
                         <td className="py-2.5 pr-4">{c?.distancia_m ? `${Math.round(c.distancia_m)} m` : '—'}</td>
                         <td className="py-2.5 pr-4">{c ? formatearVelocidad(c.velocidad_media_ms) : '—'}</td>

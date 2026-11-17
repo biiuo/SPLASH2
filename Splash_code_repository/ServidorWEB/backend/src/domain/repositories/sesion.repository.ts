@@ -1,4 +1,4 @@
-import type { ModoProceso, ResumenSesion, Sesion } from '../entities/sesion.entity'
+import type { EstadoSesion, ModoProceso, ResumenSesion, Sesion } from '../entities/sesion.entity'
 
 export type NuevaSesion = {
   modo: ModoProceso
@@ -33,6 +33,8 @@ export interface SesionRepository {
   finalizar(id: string): Promise<Sesion | null>
   /** Las últimas `limite` sesiones (la más reciente primero), con el resumen de lo medido. */
   listarRecientes(limite: number, visiblePara?: string | null): Promise<ResumenSesion[]>
+  /** Cuántas sesiones hay en cada estado (todas, sin límite). */
+  contarPorEstado(): Promise<Record<EstadoSesion, number>>
 }
 
 export const SESION_REPOSITORY = Symbol('SesionRepository')

@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Res, StreamableFile } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, Patch, Post, Res, StreamableFile } from '@nestjs/common'
 import {
   ApiBadRequestResponse,
   ApiBody,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -19,7 +20,8 @@ import type {
   EvaluarCalibracionEntrada,
   GuardarCalibracionEntrada,
 } from '../../application/dtos/calibracion.dto'
-import { ActivarCalibracionUseCase } from '../../application/use-cases/calibracion/activar-calibracion.usecase'
+import { ActivarCalibracionUseCase, DesactivarCalibracionUseCase } from '../../application/use-cases/calibracion/activar-calibracion.usecase'
+import { EliminarCalibracionUseCase } from '../../application/use-cases/calibracion/eliminar-calibracion.usecase'
 import { ActualizarCalibracionUseCase } from '../../application/use-cases/calibracion/actualizar-calibracion.usecase'
 import { ObtenerImagenCalibracionUseCase } from '../../application/use-cases/calibracion/obtener-imagen.usecase'
 import {
@@ -42,7 +44,8 @@ import { EJEMPLOS } from '../swagger/ejemplos'
 const SIN_BASE = { description: 'La base de datos no está disponible.' }
 
 /** Calibrar la cámara y dibujar las zonas: lo hace el entrenador (o un administrador). Ver, cualquiera con sesión. */
-const CALIBRAN: Rol[] = ['entrenador', 'administrador']
+/** Configurar la cámara (calibrar, zonas, activar) es del administrador. */
+const CALIBRAN: Rol[] = ['administrador']
 
 @ApiTags('Calibración')
 @ApiUnauthorizedResponse({ description: 'Sin sesión iniciada.' })
@@ -56,6 +59,8 @@ export class CalibracionController {
     private readonly calibracionActiva: ObtenerCalibracionActivaUseCase,
     private readonly listarCalibraciones: ListarCalibracionesUseCase,
     private readonly activarCalibracion: ActivarCalibracionUseCase,
+    private readonly desactivarCalibracion: DesactivarCalibracionUseCase,
+    private readonly eliminarCalibracion: EliminarCalibracionUseCase,
     private readonly actualizarCalibracion: ActualizarCalibracionUseCase,
     private readonly obtenerZonas: ObtenerZonasUseCase,
     private readonly obtenerImagen: ObtenerImagenCalibracionUseCase,
@@ -160,6 +165,39 @@ export class CalibracionController {
   @ApiServiceUnavailableResponse(SIN_BASE)
   historial() {
     return this.listarCalibraciones.execute()
+  }
+
+  /** Deja de usar la calibración activa: ninguna queda activa. */
+  @Post('desactivar')
+  @Roles(...CALIBRAN)
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'No usar ninguna calibración',
+    description: 'La activa deja de serlo (sigue en el historial). Las sesiones nuevas no pueden empezar hasta activar una; las que ya empezaron siguen con la que tenían.',
+  })
+  @ApiOkResponse({ description: '`{ id: null }`' })
+  @ApiServiceUnavailableResponse(SIN_BASE)
+  desactivar() {
+    return this.desactivarCalibracion.execute()
+  }
+
+  /** Borra una calibración del historial (no la activa ni una en uso). */
+  @Delete(':id')
+  @Roles(...CALIBRAN)
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Eliminar una calibración guardada',
+    description:
+      'Borra la calibración con sus zonas e imagen. No se puede borrar la activa (primero `POST /api/calibracion/desactivar` ' +
+      'o activar otra) ni una que use una sesión en curso. Las sesiones terminadas quedan sin calibración asociada.',
+  })
+  @ApiParam({ name: 'id', description: 'Id de una calibración del historial.' })
+  @ApiOkResponse({ description: '`{ id }`' })
+  @ApiNotFoundResponse({ description: 'No existe esa calibración.' })
+  @ApiConflictResponse({ description: 'Es la activa o la usa una sesión en curso.' })
+  @ApiServiceUnavailableResponse(SIN_BASE)
+  eliminar(@Param('id') id: string) {
+    return this.eliminarCalibracion.execute(id)
   }
 
   /** Deja una calibración guardada como la activa. */

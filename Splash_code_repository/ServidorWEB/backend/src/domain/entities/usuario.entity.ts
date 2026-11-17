@@ -13,6 +13,10 @@ export type Usuario = {
   nombre: string
   rol: Rol
   activo: boolean
+  /** Cuándo se creó la cuenta (ISO). */
+  creado_en?: string
+  /** Teléfono de contacto (opcional). */
+  telefono?: string | null
 }
 
 /** Lo que va dentro del token: quién es y qué rol tiene. */

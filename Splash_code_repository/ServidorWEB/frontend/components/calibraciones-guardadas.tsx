@@ -45,6 +45,33 @@ export function CalibracionesGuardadas() {
     }
   }
 
+  async function desactivar() {
+    if (!window.confirm('¿Dejar de usar esta posición? No va a quedar ninguna activa y no se podrán empezar sesiones hasta elegir una.')) return
+    setActivando('ninguna')
+    try {
+      await api.desactivarCalibracion()
+      await cargar()
+    } catch (e) {
+      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo desactivar la calibración.')
+    } finally {
+      setActivando(null)
+    }
+  }
+
+  async function eliminar(c: CalibracionResumen) {
+    const nombre = c.nombre ?? 'esta posición sin nombre'
+    if (!window.confirm(`¿Eliminar «${nombre}»? Se borran sus puntos, zonas e imagen y no se puede deshacer. Las sesiones que ya la usaron conservan sus resultados.`)) return
+    setActivando(`eliminar:${c.id}`)
+    try {
+      await api.eliminarCalibracion(c.id)
+      await cargar()
+    } catch (e) {
+      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo eliminar la calibración.')
+    } finally {
+      setActivando(null)
+    }
+  }
+
   async function renombrar() {
     if (!editando) return
     try {
@@ -60,7 +87,8 @@ export function CalibracionesGuardadas() {
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 sm:p-8">
       <div className="mx-auto max-w-3xl">
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-medium text-blue-600">
-          <Link href="/calibracion" className="hover:underline">← Volver a la calibración</Link>
+          <Link href="/admin" className="hover:underline">← Volver al inicio</Link>
+          <Link href="/calibracion" className="hover:underline">Calibración</Link>
           <Link href="/zonas" className="hover:underline">Zonas de análisis</Link>
         </div>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">Posiciones de la cámara</h1>
@@ -75,6 +103,12 @@ export function CalibracionesGuardadas() {
         {lista && lista.length === 0 && (
           <p className="mt-6 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
             Todavía no hay ninguna. <Link href="/calibracion" className="font-semibold text-blue-600 underline">Calibrar ahora</Link>
+          </p>
+        )}
+
+        {lista && lista.length > 0 && !lista.some((c) => c.activa) && (
+          <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Ninguna posición está activa: no se pueden empezar sesiones hasta que elijas una con «Usar esta».
           </p>
         )}
 
@@ -137,7 +171,16 @@ export function CalibracionesGuardadas() {
                       {c.completa ? 'Completa' : 'Incompleta'}
                     </span>
                     {c.activa ? (
-                      <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">Activa</span>
+                      <>
+                        <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">Activa</span>
+                        <button
+                          onClick={desactivar}
+                          disabled={activando !== null}
+                          className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          {activando === 'ninguna' ? 'Quitando…' : 'No usar'}
+                        </button>
+                      </>
                     ) : (
                       <button
                         onClick={() => activar(c.id)}
@@ -145,6 +188,16 @@ export function CalibracionesGuardadas() {
                         className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
                       >
                         {activando === c.id ? 'Activando…' : 'Usar esta'}
+                      </button>
+                    )}
+                    {!c.activa && (
+                      <button
+                        onClick={() => eliminar(c)}
+                        disabled={activando !== null}
+                        title="Eliminar esta calibración"
+                        className="rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60"
+                      >
+                        {activando === `eliminar:${c.id}` ? 'Eliminando…' : 'Eliminar'}
                       </button>
                     )}
                   </div>

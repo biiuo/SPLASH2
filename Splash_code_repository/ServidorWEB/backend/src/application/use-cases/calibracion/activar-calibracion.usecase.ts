@@ -11,3 +11,13 @@ export class ActivarCalibracionUseCase {
     return { id }
   }
 }
+
+/** Deja de usar la calibración activa: ninguna queda activa (siguen en el historial) y no se pueden empezar sesiones hasta elegir una. */
+export class DesactivarCalibracionUseCase {
+  constructor(private readonly calibraciones: CalibracionRepository) {}
+
+  async execute(): Promise<{ id: null }> {
+    await this.calibraciones.desactivar()
+    return { id: null }
+  }
+}

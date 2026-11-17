@@ -23,8 +23,9 @@ export class GrupoUseCases {
     private readonly nadadores: NadadorRepository,
   ) {}
 
+  /** Los grupos del entrenador. El administrador ve los de todos. */
   misGrupos(entrenador: Identidad): Promise<Grupo[]> {
-    return this.grupos.deEntrenador(entrenador.id)
+    return entrenador.rol === 'administrador' ? this.grupos.todos() : this.grupos.deEntrenador(entrenador.id)
   }
 
   async crear(entrenador: Identidad, nombre: unknown): Promise<Grupo> {
@@ -80,17 +81,40 @@ export class GrupoUseCases {
     return (await this.grupos.obtener(grupo.id))!
   }
 
-  /** Todos los nadadores registrados, con los grupos MÍOS en los que ya están (para elegir a quién sumar). */
+  /**
+   * Los nadadores que puede ver quien pregunta, con los grupos suyos en los que ya están. Un entrenador ve solo a los
+   * de sus grupos (los que agregó); a uno nuevo lo suma por el correo de su cuenta. El administrador ve a todos.
+   */
   async todos(entrenador: Identidad): Promise<(Nadador & { mis_grupos: string[] })[]> {
-    const [todos, mios] = await Promise.all([this.nadadores.todos(), this.grupos.deEntrenador(entrenador.id)])
-    return todos.map((n) => ({ ...n, mis_grupos: mios.filter((g) => g.nadadores.some((x) => x.id === n.id)).map((g) => g.id) }))
+    const mios = await this.misGrupos(entrenador)
+    const conGrupos = (n: Nadador) => ({ ...n, mis_grupos: mios.filter((g) => g.nadadores.some((x) => x.id === n.id)).map((g) => g.id) })
+    if (entrenador.rol === 'administrador') return (await this.nadadores.todos()).map(conGrupos)
+    const vistos = new Map<string, Nadador>()
+    for (const g of mios) for (const n of g.nadadores) vistos.set(n.id, n)
+    return [...vistos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(conGrupos)
+  }
+
+  /**
+   * Sugerencias para sumar a un grupo mientras se escribe: desde 3 letras, hasta 8 nadadores con cuenta activa.
+   * Es lo mínimo para encontrar a alguien sin listar todas las cuentas (el entrenador ve solo a los de sus grupos).
+   */
+  async sugerir(texto: unknown): Promise<Nadador[]> {
+    const t = typeof texto === 'string' ? texto.trim() : ''
+    if (t.length < 3) return []
+    return this.nadadores.buscar(t.slice(0, 80), 8)
   }
 
   /** Para un nadador: los grupos en los que está, con su entrenador. */
-  async gruposDeNadador(nadador: Identidad): Promise<{ id: string; nombre: string; entrenador: string }[]> {
+  async gruposDeNadador(nadador: Identidad): Promise<{ id: string; nombre: string; entrenador: string; entrenador_email: string | null; entrenador_telefono: string | null }[]> {
     const perfil = await this.nadadores.deUsuario(nadador.id)
     if (!perfil) return []
-    return (await this.grupos.deNadador(perfil.id)).map((g) => ({ id: g.id, nombre: g.nombre, entrenador: g.entrenador }))
+    return (await this.grupos.deNadador(perfil.id)).map((g) => ({
+      id: g.id,
+      nombre: g.nombre,
+      entrenador: g.entrenador,
+      entrenador_email: g.entrenador_email ?? null,
+      entrenador_telefono: g.entrenador_telefono ?? null,
+    }))
   }
 
   /** El grupo, si es de ese entrenador (el administrador puede con todos). Si no, "no existe": no se revela. */
