@@ -3,7 +3,7 @@
 import { Activity, Gauge, TrendingUp, Waves } from 'lucide-react'
 import Link from 'next/link'
 
-import { Encabezado } from '@/components/nadador/shell'
+import { BOTON_HERO, CifraHero, HeroPanel } from '@/components/hero-panel'
 import { TablaSesiones } from '@/components/nadador/tabla-sesiones'
 import { Aviso, BOTON, EstadoSesion, Kpi, Tarjeta, useMisSesiones } from '@/components/nadador/ui'
 import { SesionPanel } from '@/components/sesion-panel'
@@ -22,8 +22,20 @@ export default function MiResumen() {
 
   return (
     <>
-      <p className="text-sm capitalize text-[#94A3B8]">{hoy()}</p>
-      <Encabezado titulo={`Hola, ${usuario?.nombre.split(' ')[0] ?? ''}`} bajada="Aquí puedes consultar tu rendimiento y progreso." />
+      <HeroPanel
+        foto={1}
+        etiqueta={hoy()}
+        titulo={`Hola, ${usuario?.nombre.split(' ')[0] ?? ''}.`}
+        resaltado="Cada largo cuenta."
+        bajada="Aquí puedes consultar tu rendimiento y progreso."
+        acciones={
+          <>
+            <Link href="/nadador/progreso" className={BOTON_HERO.claro}>Mi progreso</Link>
+            <Link href="/nadador/sesiones" className={BOTON_HERO.vidrio}>Mis sesiones</Link>
+          </>
+        }
+        lateral={t ? <CifraHero valor={`${Math.round(t.distancia_m).toLocaleString('es-CO')} m`} texto="nadados en total" /> : undefined}
+      />
 
       <SesionPanel titulo="Tu sesión" vacia="No tenés una sesión en curso. Elegí un carril: podés sumarte a la sesión de un entrenador (de tu grupo, o libre) o empezar una sesión personal." />
 

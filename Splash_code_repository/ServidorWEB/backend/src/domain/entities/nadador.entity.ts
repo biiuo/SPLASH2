@@ -7,6 +7,13 @@ export type Nadador = {
   telefono?: string | null
 }
 
+export const DIAS_SEMANA = ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom'] as const
+export type DiaSemana = (typeof DIAS_SEMANA)[number]
+export const NIVELES_GRUPO = ['principiante', 'intermedio', 'avanzado', 'competitivo'] as const
+export type NivelGrupo = (typeof NIVELES_GRUPO)[number]
+/** Cuándo entrena el grupo: días de la semana y franja horaria (HH:MM). */
+export type HorarioGrupo = { dias: DiaSemana[]; inicio: string; fin: string }
+
 /** Un grupo de un entrenador, con sus nadadores. */
 export type Grupo = {
   id: string
@@ -17,5 +24,8 @@ export type Grupo = {
   entrenador_email?: string | null
   entrenador_telefono?: string | null
   nombre: string
+  descripcion?: string | null
+  nivel?: NivelGrupo | null
+  horario?: HorarioGrupo | null
   nadadores: Nadador[]
 }

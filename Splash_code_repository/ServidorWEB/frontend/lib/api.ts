@@ -27,6 +27,8 @@ import type {
   Objetivo,
   TipoObjetivo,
   Nadador,
+  HorarioGrupo,
+  NivelGrupo,
 } from './tipos'
 import type { ArchivoZonas, Zona } from './zonas'
 
@@ -168,6 +170,11 @@ export const api = {
   grupos: () => pedir<Grupo[]>('grupos'),
   crearGrupo: (nombre: string) => pedir<Grupo>('grupos', 'POST', { nombre }),
   renombrarGrupo: (id: string, nombre: string) => pedir<Grupo>(`grupos/${encodeURIComponent(id)}`, 'PATCH', { nombre }),
+  /** Nombre y configuración del grupo (lo que no venga queda igual; null lo borra). */
+  actualizarGrupo: (
+    id: string,
+    d: { nombre?: string; descripcion?: string | null; nivel?: NivelGrupo | null; horario?: HorarioGrupo | null },
+  ) => pedir<Grupo>(`grupos/${encodeURIComponent(id)}`, 'PATCH', d),
   borrarGrupo: (id: string) => pedir<null>(`grupos/${encodeURIComponent(id)}`, 'DELETE'),
   agregarAGrupo: (grupoId: string, nadadorId: string) =>
     pedir<Grupo>(`grupos/${encodeURIComponent(grupoId)}/nadadores`, 'POST', { nadador_id: nadadorId }),

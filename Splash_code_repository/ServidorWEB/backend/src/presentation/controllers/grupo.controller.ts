@@ -77,11 +77,14 @@ export class GrupoController {
 
   @Patch(':id')
   @Roles(...ENTRENAN)
-  @ApiOperation({ summary: 'Cambiar el nombre de un grupo' })
+  @ApiOperation({
+    summary: 'Cambiar un grupo',
+    description: '`{ nombre?, descripcion?, nivel?: principiante|intermedio|avanzado|competitivo, horario?: { dias: ["lun", ...], inicio: "06:00", fin: "07:30" } }`. null borra.',
+  })
   @ApiOkResponse({ description: 'El grupo.' })
   @ApiNotFoundResponse({ description: 'No existe ese grupo (o no es tuyo).' })
-  renombrar(@Param('id') id: string, @Body() cuerpo: { nombre?: unknown }, @Solicitante() s: TipoSolicitante) {
-    return this.grupos.renombrar(persona(s), id, cuerpo?.nombre)
+  actualizar(@Param('id') id: string, @Body() cuerpo: { nombre?: unknown; descripcion?: unknown; nivel?: unknown; horario?: unknown }, @Solicitante() s: TipoSolicitante) {
+    return this.grupos.actualizar(persona(s), id, cuerpo ?? {})
   }
 
   @Delete(':id')

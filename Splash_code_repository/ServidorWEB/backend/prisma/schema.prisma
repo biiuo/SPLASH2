@@ -98,6 +98,12 @@ model Grupo {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   entrenador_id String   @db.Uuid
   nombre        String
+  /// Para qué es el grupo (opcional).
+  descripcion   String?
+  /// principiante, intermedio, avanzado o competitivo (opcional).
+  nivel         String?
+  /// Horario de clases: { dias: ["lun", "mie"], inicio: "06:00", fin: "07:30" } (opcional).
+  horario       Json?
   creado_en     DateTime @default(now()) @db.Timestamptz(6)
 
   entrenador Usuario        @relation(fields: [entrenador_id], references: [id], onDelete: Cascade)

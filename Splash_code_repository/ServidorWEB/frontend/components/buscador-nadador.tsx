@@ -18,8 +18,8 @@ export function BuscadorNadador({
   deshabilitado = false,
   placeholder = 'Correo o nombre del nadador',
 }: {
-  alElegir: (n: Nadador) => void | Promise<void>
-  alEscribirCorreo: (email: string) => void | Promise<void>
+  alElegir: (n: Nadador) => unknown
+  alEscribirCorreo: (email: string) => unknown
   excluir?: string[]
   deshabilitado?: boolean
   placeholder?: string

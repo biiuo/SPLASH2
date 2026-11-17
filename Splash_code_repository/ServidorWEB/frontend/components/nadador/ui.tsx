@@ -12,20 +12,20 @@ import type { Sesion } from '@/lib/tipos'
 
 export const BOTON = {
   primario:
-    'inline-flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1D4ED8] disabled:bg-[#E2E8F0] disabled:text-[#94A3B8]',
+    'inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--acento,#2563EB)] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[var(--acento,#2563EB)]/25 transition hover:brightness-110 disabled:bg-[#E2E8F0] disabled:text-[#94A3B8] disabled:shadow-none',
   secundario:
-    'inline-flex items-center justify-center gap-2 rounded-xl bg-[#EFF6FF] px-4 py-2.5 text-sm font-semibold text-[#1D4ED8] transition hover:bg-[#DBEAFE] disabled:bg-[#E2E8F0] disabled:text-[#94A3B8]',
+    'inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--acento-suave,#EFF6FF)] px-4 py-2.5 text-sm font-semibold text-[var(--acento-texto,#1D4ED8)] transition hover:brightness-95 disabled:bg-[#E2E8F0] disabled:text-[#94A3B8]',
   terciario:
     'inline-flex items-center justify-center gap-2 rounded-xl border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-semibold text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#334155] disabled:bg-[#E2E8F0] disabled:text-[#94A3B8]',
   peligro:
     'inline-flex items-center justify-center gap-2 rounded-xl bg-[#DC2626] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#B91C1C] disabled:bg-[#E2E8F0] disabled:text-[#94A3B8]',
 }
 
-export const CAMPO = 'mt-1 block w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#EFF6FF]'
+export const CAMPO = 'mt-1 block w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] outline-none transition focus:border-[var(--acento,#2563EB)] focus:ring-4 focus:ring-[var(--acento-suave,#EFF6FF)]'
 
 export function Tarjeta({ titulo, subtitulo, accion, children, className = '' }: { titulo?: string; subtitulo?: string; accion?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl border border-[#E2E8F0] bg-white p-5 sm:p-6 ${className}`}>
+    <section className={`rounded-3xl border border-white bg-white/90 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.12)] backdrop-blur sm:p-6 ${className}`}>
       {(titulo || accion) && (
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -43,14 +43,15 @@ export function Tarjeta({ titulo, subtitulo, accion, children, className = '' }:
 /** Indicador: ícono, nombre, valor y unidad. */
 export function Kpi({ icono: Icono, etiqueta, valor, unidad, nota }: { icono: LucideIcon; etiqueta: string; valor: string; unidad?: string; nota?: string }) {
   return (
-    <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5">
-      <span className="flex size-9 items-center justify-center rounded-xl bg-[#EFF6FF] text-[#2563EB]"><Icono className="size-4" /></span>
-      <p className="mt-4 text-sm text-[#64748B]">{etiqueta}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-[#0F172A]">
+    <div className="group relative overflow-hidden rounded-3xl border border-white bg-white/90 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5">
+      <span className="pointer-events-none absolute -right-6 -top-6 size-24 rounded-full bg-[var(--acento-suave,#EFF6FF)] transition group-hover:scale-110" aria-hidden="true" />
+      <span className="relative flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--acento,#2563EB)] to-[var(--acento-2,#38BDF8)] text-white shadow-md shadow-[var(--acento,#2563EB)]/30"><Icono className="size-4" /></span>
+      <p className="relative mt-4 text-sm text-[#64748B]">{etiqueta}</p>
+      <p className="relative mt-1 text-2xl font-semibold tracking-tight text-[#0F172A]">
         {valor}
         {unidad && valor !== '—' && <span className="ml-1 text-sm font-medium text-[#64748B]">{unidad}</span>}
       </p>
-      {nota && <p className="mt-1 text-xs text-[#94A3B8]">{nota}</p>}
+      {nota && <p className="relative mt-1 text-xs text-[#94A3B8]">{nota}</p>}
     </div>
   )
 }

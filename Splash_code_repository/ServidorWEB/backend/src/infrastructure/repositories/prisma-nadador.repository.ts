@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common'
 
-import type { Grupo, Nadador } from '../../domain/entities/nadador.entity'
+import type { Grupo, HorarioGrupo, Nadador, NivelGrupo } from '../../domain/entities/nadador.entity'
 import type { Rol } from '../../domain/entities/usuario.entity'
-import { GrupoRepetido, type GrupoRepository, type NadadorRepository } from '../../domain/repositories/nadador.repository'
+import { type ConfiguracionGrupo, GrupoRepetido, type GrupoRepository, type NadadorRepository } from '../../domain/repositories/nadador.repository'
+import { Prisma } from '../persistence/generated/prisma/client'
 import { PrismaService } from '../persistence/prisma.service'
 
 const CON_CUENTA = { usuario: { select: { email: true, telefono: true } } } as const
@@ -84,6 +85,9 @@ type FilaGrupo = {
   id: string
   entrenador_id: string
   nombre: string
+  descripcion: string | null
+  nivel: string | null
+  horario: unknown
   entrenador: { nombre: string; email: string; telefono: string | null }
   nadadores: { nadador: FilaNadador }[]
 }
@@ -94,6 +98,9 @@ const aGrupo = (f: FilaGrupo): Grupo => ({
   entrenador_email: f.entrenador.email,
   entrenador_telefono: f.entrenador.telefono,
   nombre: f.nombre,
+  descripcion: f.descripcion,
+  nivel: (f.nivel as NivelGrupo | null) ?? null,
+  horario: (f.horario as HorarioGrupo | null) ?? null,
   nadadores: f.nadadores.map((n) => aNadador(n.nadador)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
 })
 
@@ -143,6 +150,19 @@ export class PrismaGrupoRepository implements GrupoRepository {
       if (esRepetido(e)) throw new GrupoRepetido()
       throw e
     }
+  }
+
+  async configurar(id: string, c: ConfiguracionGrupo): Promise<Grupo> {
+    const f = await this.prisma.grupo.update({
+      where: { id },
+      data: {
+        descripcion: c.descripcion,
+        nivel: c.nivel,
+        horario: c.horario === undefined ? undefined : c.horario === null ? Prisma.DbNull : c.horario,
+      },
+      include: CON_TODO,
+    })
+    return aGrupo(f)
   }
 
   async renombrar(id: string, nombre: string): Promise<Grupo> {

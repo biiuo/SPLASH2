@@ -1,6 +1,6 @@
-import type { Grupo, Nadador } from '../../../domain/entities/nadador.entity'
+import { DIAS_SEMANA, type DiaSemana, type Grupo, type HorarioGrupo, NIVELES_GRUPO, type Nadador, type NivelGrupo } from '../../../domain/entities/nadador.entity'
 import type { Identidad } from '../../../domain/entities/usuario.entity'
-import { GrupoRepetido, type GrupoRepository, type NadadorRepository } from '../../../domain/repositories/nadador.repository'
+import { type ConfiguracionGrupo, GrupoRepetido, type GrupoRepository, type NadadorRepository } from '../../../domain/repositories/nadador.repository'
 import { esUuid } from '../../../domain/services/identificador'
 import { ConflictoException, NoEncontradoException, ValidacionException } from '../../exceptions/aplicacion.exceptions'
 
@@ -47,6 +47,41 @@ export class GrupoUseCases {
       if (e instanceof GrupoRepetido) throw new ConflictoException(`Ya tenés un grupo llamado "${n}".`)
       throw e
     }
+  }
+
+  /**
+   * Cambiar el nombre y/o la configuración (descripción, nivel, horario de clases). Lo que no venga queda igual;
+   * null lo borra.
+   */
+  async actualizar(entrenador: Identidad, id: string, datos: { nombre?: unknown; descripcion?: unknown; nivel?: unknown; horario?: unknown }): Promise<Grupo> {
+    let grupo = await this.propio(entrenador, id)
+    if (datos?.nombre !== undefined && datos.nombre !== grupo.nombre) grupo = await this.renombrar(entrenador, id, datos.nombre)
+    const c: ConfiguracionGrupo = {}
+    const errores: string[] = []
+    if (datos?.descripcion !== undefined) {
+      const d = typeof datos.descripcion === 'string' ? datos.descripcion.trim() : ''
+      if (d.length > 200) errores.push('La descripción puede tener hasta 200 caracteres.')
+      c.descripcion = d || null
+    }
+    if (datos?.nivel !== undefined) {
+      if (datos.nivel === null || datos.nivel === '') c.nivel = null
+      else if (NIVELES_GRUPO.includes(datos.nivel as NivelGrupo)) c.nivel = datos.nivel as NivelGrupo
+      else errores.push(`El nivel tiene que ser ${NIVELES_GRUPO.join(', ')}.`)
+    }
+    if (datos?.horario !== undefined) {
+      if (datos.horario === null) c.horario = null
+      else {
+        const h = datos.horario as Partial<HorarioGrupo>
+        const hora = /^([01]\d|2[0-3]):[0-5]\d$/
+        const dias = Array.isArray(h?.dias) ? [...new Set(h.dias)] : []
+        if (!dias.length || !dias.every((d) => DIAS_SEMANA.includes(d as DiaSemana))) errores.push('Elegí al menos un día de la semana.')
+        if (typeof h?.inicio !== 'string' || !hora.test(h.inicio) || typeof h?.fin !== 'string' || !hora.test(h.fin)) errores.push('Las horas tienen que ser HH:MM.')
+        else if (h.fin <= h.inicio) errores.push('La hora de fin tiene que ser después de la de inicio.')
+        if (!errores.length) c.horario = { dias: DIAS_SEMANA.filter((d) => dias.includes(d)), inicio: h.inicio as string, fin: h.fin as string }
+      }
+    }
+    if (errores.length) throw new ValidacionException('La configuración del grupo no es válida.', errores)
+    return Object.keys(c).length ? this.grupos.configurar(id, c) : grupo
   }
 
   async borrar(entrenador: Identidad, id: string): Promise<void> {

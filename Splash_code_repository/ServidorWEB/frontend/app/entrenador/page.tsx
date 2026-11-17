@@ -5,7 +5,7 @@ import Link from 'next/link'
 
 import { conErrores } from '@/components/admin/comun'
 import { carrilesDe, metricas, useDatosEntrenador } from '@/components/entrenador/datos'
-import { Encabezado } from '@/components/nadador/shell'
+import { BOTON_HERO, CifraHero, HeroPanel } from '@/components/hero-panel'
 import { Aviso, BOTON, EstadoSesion, Kpi, Tarjeta } from '@/components/nadador/ui'
 import { SesionPanel } from '@/components/sesion-panel'
 import { useCuenta } from '@/lib/cuenta'
@@ -47,8 +47,20 @@ export default function DashboardEntrenador() {
 
   return (
     <>
-      <p className="text-sm capitalize text-[#94A3B8]">{hoy()}</p>
-      <Encabezado titulo={`Hola, ${usuario?.nombre.split(' ')[0] ?? ''}`} bajada="El resumen de tu grupo y tus entrenamientos." />
+      <HeroPanel
+        foto={2}
+        etiqueta={hoy()}
+        titulo={`Hola, ${usuario?.nombre.split(' ')[0] ?? ''}.`}
+        resaltado="Tu equipo, en el agua."
+        bajada="El resumen de tus grupos y tus entrenamientos."
+        acciones={
+          <>
+            <Link href="/entrenador/grupos" className={BOTON_HERO.claro}>Mis grupos</Link>
+            <Link href="/entrenador/monitoreo" className={BOTON_HERO.vidrio}>Monitoreo en vivo</Link>
+          </>
+        }
+        lateral={datos ? <><CifraHero valor={String(datos.nadadores.length)} texto="nadadores" /><CifraHero valor={String(sesiones.filter((s) => s.estado === 'activa').length)} texto="sesiones en curso" /></> : undefined}
+      />
       {problema && <div className="mb-6"><Aviso tipo="error">{problema}</Aviso></div>}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

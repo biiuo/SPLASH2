@@ -1,4 +1,7 @@
-import type { Grupo, Nadador } from '../entities/nadador.entity'
+import type { Grupo, HorarioGrupo, Nadador, NivelGrupo } from '../entities/nadador.entity'
+
+/** La configuración de un grupo (undefined = no tocar, null = borrar). */
+export type ConfiguracionGrupo = { descripcion?: string | null; nivel?: NivelGrupo | null; horario?: HorarioGrupo | null }
 import type { Rol } from '../entities/usuario.entity'
 
 export interface NadadorRepository {
@@ -25,6 +28,7 @@ export interface GrupoRepository {
   /** Lanza GrupoRepetido si el entrenador ya tiene un grupo con ese nombre. */
   crear(entrenadorId: string, nombre: string): Promise<Grupo>
   renombrar(id: string, nombre: string): Promise<Grupo>
+  configurar(id: string, cambios: ConfiguracionGrupo): Promise<Grupo>
   /** Pasa el grupo a otro entrenador. Lanza GrupoRepetido si ese entrenador ya tiene un grupo con el mismo nombre. */
   cambiarEntrenador(id: string, entrenadorId: string): Promise<Grupo>
   borrar(id: string): Promise<void>

@@ -1,11 +1,12 @@
 'use client'
 
-import { ChartNoAxesCombined, FileText, GitCompareArrows, History, LayoutDashboard, MonitorPlay, Target, UserRound, Users } from 'lucide-react'
+import { ChartNoAxesCombined, FileText, GitCompareArrows, History, LayoutDashboard, MonitorPlay, Target, UserRound, Users, UsersRound } from 'lucide-react'
 
 import { type OpcionMenu, ShellModulo } from '@/components/nadador/shell'
 
 const OPCIONES_ENTRENADOR: OpcionMenu[] = [
   { href: '/entrenador', texto: 'Dashboard', icono: LayoutDashboard },
+  { href: '/entrenador/grupos', texto: 'Mis grupos', icono: UsersRound },
   { href: '/entrenador/nadadores', texto: 'Mis nadadores', icono: Users },
   { href: '/entrenador/monitoreo', texto: 'Monitoreo', icono: MonitorPlay },
   { href: '/entrenador/rendimiento', texto: 'Rendimiento', icono: ChartNoAxesCombined },

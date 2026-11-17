@@ -25,8 +25,8 @@ export function ShellNadador({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * El marco de un módulo (nadador, administrador): menú lateral fijo de 220 px (en el celular, arriba y desplegable),
- * el usuario abajo con "Cerrar sesión", y el contenido. La primera opción es el inicio del módulo.
+ * El marco de un módulo con sesión iniciada: menú lateral azul marino (como la portada) con el color de acento del
+ * rol, el usuario abajo y el contenido sobre fondo claro. En el celular, el menú va arriba y se despliega.
  */
 export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[]; rol: string; children: React.ReactNode }) {
   const ruta = usePathname()
@@ -35,70 +35,81 @@ export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[
   const [abierto, setAbierto] = useState(false)
   const inicio = opciones[0]?.href ?? '/'
   const activa = (href: string) => (href === inicio ? ruta === href : ruta.startsWith(href))
+  const tema = rol === 'Nadador' ? 'nadador' : rol === 'Entrenador' ? 'entrenador' : 'administrador'
 
   async function salir() {
     await cuenta.salir()
     router.push('/')
   }
 
+  const logo = (
+    <Link href={inicio} className="flex items-center gap-2.5">
+      <span className="flex size-9 items-center justify-center rounded-xl bg-[#1D63ED] text-white shadow-lg shadow-[#1D63ED]/40"><Waves className="size-5" /></span>
+      <span className="font-bold text-white">Safe<span className="text-[#7DD3FC]">Splash</span></span>
+    </Link>
+  )
+
   const menu = (
     <nav className="flex flex-col gap-1" aria-label={`Módulo ${rol.toLowerCase()}`}>
-      {opciones.map(({ href, texto, icono: Icono }) => (
-        <Link
-          key={href}
-          href={href}
-          onClick={() => setAbierto(false)}
-          aria-current={activa(href) ? 'page' : undefined}
-          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-            activa(href) ? 'bg-[#EFF6FF] text-[#1D4ED8]' : 'text-[#64748B] hover:bg-[#F1F5F9]'
-          }`}
-        >
-          <Icono className="size-4 text-[#2563EB]" />
-          {texto}
-        </Link>
-      ))}
+      {opciones.map(({ href, texto, icono: Icono }) => {
+        const on = activa(href)
+        return (
+          <Link
+            key={href}
+            href={href}
+            onClick={() => setAbierto(false)}
+            aria-current={on ? 'page' : undefined}
+            className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+              on ? 'bg-white/10 text-white ring-1 ring-white/15' : 'text-sky-100/70 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            {on && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-[var(--acento-2)]" aria-hidden="true" />}
+            <Icono className={`size-4 ${on ? 'text-[var(--acento-2)]' : 'text-sky-300/70 group-hover:text-sky-200'}`} />
+            {texto}
+          </Link>
+        )
+      })}
     </nav>
   )
 
   const usuario = cuenta.usuario
   const pie = usuario && (
-    <div className="rounded-2xl bg-[#F8FAFC] p-3">
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur">
       <div className="flex items-center gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#DBEAFE] text-sm font-semibold text-[#1D4ED8]">{iniciales(usuario.nombre)}</span>
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--acento)] to-[var(--acento-2)] text-sm font-semibold text-white">{iniciales(usuario.nombre)}</span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-[#0F172A]">{usuario.nombre}</p>
-          <p className="text-xs text-[#94A3B8]">{rol}</p>
+          <p className="truncate text-sm font-semibold text-white">{usuario.nombre}</p>
+          <p className="text-xs text-sky-200/70">{rol}</p>
         </div>
       </div>
-      <button onClick={salir} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[#E2E8F0] bg-white py-2 text-xs font-semibold text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#334155]">
+      <button onClick={salir} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 py-2 text-xs font-semibold text-sky-100 transition hover:bg-white/10">
         <LogOut className="size-3.5" /> Cerrar sesión
       </button>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A]">
-      <aside className="fixed inset-y-0 left-0 hidden w-[220px] flex-col overflow-y-auto border-r border-[#E2E8F0] bg-white p-4 lg:flex">
-        <Link href={inicio} className="mb-8 flex items-center gap-2.5 px-2">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-[#2563EB] text-white"><Waves className="size-5" /></span>
-          <span className="font-bold">Safe<span className="text-[#2563EB]">Splash</span></span>
-        </Link>
-        <div className="flex-1">{menu}</div>
-        {pie}
+    <div data-tema={tema} className="panel-fondo min-h-screen text-[#0F172A]">
+      <aside className="fixed inset-y-0 left-0 hidden w-[220px] flex-col overflow-hidden bg-gradient-to-b from-[var(--marino-1)] via-[var(--marino-2)] to-[var(--marino-1)] p-4 lg:flex">
+        {/* las ondas del fondo, como en la portada */}
+        <svg className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full opacity-60" viewBox="0 0 220 160" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 60 C 50 40, 90 80, 140 60 S 200 40, 220 55 V160 H0 Z" fill="var(--acento)" fillOpacity="0.18" />
+          <path d="M0 90 C 60 70, 110 110, 160 90 S 210 75, 220 88 V160 H0 Z" fill="var(--acento-2)" fillOpacity="0.12" />
+        </svg>
+        <div className="relative mb-8 px-2">{logo}</div>
+        <div className="relative flex-1 overflow-y-auto">{menu}</div>
+        <div className="relative">{pie}</div>
       </aside>
 
       {/* celular / tablet: barra arriba con el menú desplegable */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#E2E8F0] bg-white px-4 py-3 lg:hidden">
-        <Link href={inicio} className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-[#2563EB] text-white"><Waves className="size-4" /></span>
-          <span className="font-bold">Safe<span className="text-[#2563EB]">Splash</span></span>
-        </Link>
-        <button onClick={() => setAbierto(!abierto)} className="rounded-lg p-2 text-[#64748B] hover:bg-[#F1F5F9]" aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto}>
+      <header className="sticky top-0 z-20 flex items-center justify-between bg-[var(--marino-1)] px-4 py-3 lg:hidden">
+        {logo}
+        <button onClick={() => setAbierto(!abierto)} className="rounded-lg p-2 text-sky-100 hover:bg-white/10" aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto}>
           {abierto ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
       </header>
       {abierto && (
-        <div className="sticky top-[57px] z-20 flex flex-col gap-3 border-b border-[#E2E8F0] bg-white p-4 shadow-sm lg:hidden">
+        <div className="sticky top-[60px] z-20 flex flex-col gap-3 bg-[var(--marino-2)] p-4 shadow-xl lg:hidden">
           {menu}
           {pie}
         </div>

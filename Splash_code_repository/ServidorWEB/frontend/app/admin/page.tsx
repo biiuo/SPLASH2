@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
 import { Barras } from '@/components/graficos'
-import { Encabezado } from '@/components/nadador/shell'
+import { BOTON_HERO, CifraHero, HeroPanel } from '@/components/hero-panel'
 import { Aviso, BOTON, EstadoSesion, Kpi, Tarjeta } from '@/components/nadador/ui'
 import { ErrorApi, api } from '@/lib/api'
 import { fechaCorta, formatearMetros, formatearVel, horaCorta } from '@/lib/largos'
@@ -25,7 +25,20 @@ export default function DashboardAdmin() {
   const rend = r?.rendimiento
   return (
     <>
-      <Encabezado titulo="Dashboard" bajada="El funcionamiento del sistema de un vistazo." />
+      <HeroPanel
+        foto={3}
+        etiqueta="Administración · SafeSplash"
+        titulo="Todo el sistema,"
+        resaltado="de un vistazo."
+        bajada="Cuentas, sesiones, cámara y análisis: lo que pasa en la piscina."
+        acciones={
+          <>
+            <Link href="/admin/monitoreo" className={BOTON_HERO.claro}>Monitoreo en tiempo real</Link>
+            <Link href="/admin/configuracion" className={BOTON_HERO.vidrio}>Configuración</Link>
+          </>
+        }
+        lateral={r ? <><CifraHero valor={String(r.sesiones.activa)} texto="sesiones en curso" /><CifraHero valor={String(r.usuarios.nadador + r.usuarios.entrenador)} texto="cuentas activas" /></> : undefined}
+      />
       {problema && <Aviso tipo="error">{problema}</Aviso>}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">

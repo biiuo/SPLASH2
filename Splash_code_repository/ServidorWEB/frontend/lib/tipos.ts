@@ -225,6 +225,11 @@ export type EstadoCarriles = { carriles: EstadoCarril[]; sesiones_disponibles: S
 export type Nadador = { id: string; usuario_id: string | null; nombre: string; email: string | null; telefono?: string | null }
 
 /** Un grupo de un entrenador, con sus nadadores. Un entrenador puede tener varios. */
+export type DiaSemana = 'lun' | 'mar' | 'mie' | 'jue' | 'vie' | 'sab' | 'dom'
+export type NivelGrupo = 'principiante' | 'intermedio' | 'avanzado' | 'competitivo'
+/** Cuándo entrena el grupo (horas HH:MM). */
+export type HorarioGrupo = { dias: DiaSemana[]; inicio: string; fin: string }
+
 export type Grupo = {
   id: string
   entrenador_id: string
@@ -232,6 +237,9 @@ export type Grupo = {
   entrenador_email?: string | null
   entrenador_telefono?: string | null
   nombre: string
+  descripcion?: string | null
+  nivel?: NivelGrupo | null
+  horario?: HorarioGrupo | null
   nadadores: Nadador[]
 }
 
