@@ -310,8 +310,7 @@ export default function Cuestionario({ searchParams }: { searchParams: Promise<{
           <section className="animate-in fade-in duration-300">
             <h1 className="text-3xl font-extrabold">Editar mi perfil</h1>
             <p className="mt-2 text-[#64748B]">
-              Elige qué parte quieres actualizar. Solo se te preguntará esa parte, y al guardar se actualiza tu historia deportiva
-              (la anterior queda en tu historial).
+              Elige qué parte quieres actualizar. Solo se te preguntará esa parte y se actualizará tu perfil deportivo.
             </p>
             {aviso && <p role="status" className="mt-4 rounded-xl bg-[#ECFDF5] px-4 py-3 text-sm font-medium text-[#047857]">{aviso}</p>}
             {error && <p role="alert" className="mt-4 rounded-xl bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C]">{error}</p>}

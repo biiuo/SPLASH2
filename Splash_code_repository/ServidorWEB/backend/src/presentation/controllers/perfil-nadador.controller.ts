@@ -42,7 +42,7 @@ export class PerfilNadadorController {
   @Post('yo/finalizar')
   @Roles('nadador')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Terminar (o guardar una edición)', description: 'Pide fecha de nacimiento y sexo. Deja una versión de la historia en el historial.' })
+  @ApiOperation({ summary: 'Terminar (o guardar una edición)', description: 'Pide fecha de nacimiento y sexo, y actualiza el perfil deportivo actual.' })
   finalizar(@Solicitante() s: TipoSolicitante) {
     return this.perfil.finalizar(persona(s))
   }
