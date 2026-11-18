@@ -26,6 +26,8 @@ export function ListaSesiones({ base, titulo, bajada }: { base: string; titulo: 
   const usuarioUrl = useParametroUrl('usuario')
   const [usuarioElegido, setUsuario] = useState<string | null | undefined>(undefined)
   const usuario = usuarioElegido === undefined ? usuarioUrl : usuarioElegido
+  const [pagina, setPagina] = useState(1)
+  const porPagina = 20
 
   useEffect(() => {
     api.sesionesRecientes(500).then(setSesiones).catch((e) => setProblema(e instanceof ErrorApi ? e.message : 'No se pudieron cargar las sesiones.'))
@@ -47,6 +49,12 @@ export function ListaSesiones({ base, titulo, bajada }: { base: string; titulo: 
       return true
     })
   }, [sesiones, f, usuario])
+
+  useEffect(() => setPagina(1), [f, usuario])
+
+  const totalPaginas = visibles ? Math.max(1, Math.ceil(visibles.length / porPagina)) : 1
+  const paginaSegura = Math.min(pagina, totalPaginas)
+  const paginadas = visibles?.slice((paginaSegura - 1) * porPagina, paginaSegura * porPagina) ?? []
 
   const cambiado = JSON.stringify(f) !== JSON.stringify(INICIAL) || !!usuario
   return (
@@ -94,7 +102,7 @@ export function ListaSesiones({ base, titulo, bajada }: { base: string; titulo: 
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((s) => {
+                {paginadas.map((s) => {
                   const t = tramosDe(s)
                   const e = estimadosDe(s)
                   return (
@@ -119,6 +127,18 @@ export function ListaSesiones({ base, titulo, bajada }: { base: string; titulo: 
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {!!visibles?.length && totalPaginas > 1 && (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#F1F5F9] pt-4">
+            <p className="text-xs text-[#64748B]">
+              {(paginaSegura - 1) * porPagina + 1}-{Math.min(paginaSegura * porPagina, visibles.length)} de {visibles.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setPagina(paginaSegura - 1)} disabled={paginaSegura === 1} className={BOTON.terciario}>Anterior</button>
+              <span className="text-xs font-semibold text-[#475569]">Página {paginaSegura} de {totalPaginas}</span>
+              <button type="button" onClick={() => setPagina(paginaSegura + 1)} disabled={paginaSegura === totalPaginas} className={BOTON.terciario}>Siguiente</button>
+            </div>
           </div>
         )}
       </Tarjeta>

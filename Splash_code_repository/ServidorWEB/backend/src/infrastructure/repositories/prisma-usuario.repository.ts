@@ -14,6 +14,7 @@ const aDominio = (f: FilaUsuario): Usuario => ({
   activo: f.activo,
   creado_en: f.creado_en.toISOString(),
   telefono: f.telefono ?? null,
+  pendiente: f.pendiente,
 })
 
 @Injectable()
@@ -24,7 +25,7 @@ export class PrismaUsuarioRepository implements UsuarioRepository {
   crear(datos: NuevoUsuario): Promise<Usuario> {
     return this.prisma.$transaction(async (tx) => {
       const fila = await tx.usuario.create({
-        data: { email: datos.email, nombre: datos.nombre, rol: datos.rol, password_hash: datos.passwordHash, telefono: datos.telefono ?? null },
+        data: { email: datos.email, nombre: datos.nombre, rol: datos.rol, password_hash: datos.passwordHash, telefono: datos.telefono ?? null, pendiente: datos.pendiente ?? false },
       })
       if (datos.rol === 'nadador') await tx.nadador.create({ data: { usuario_id: fila.id, nombre: fila.nombre } })
       return aDominio(fila)
@@ -73,6 +74,7 @@ export class PrismaUsuarioRepository implements UsuarioRepository {
     const where = {
       rol: filtro.rol,
       activo: filtro.activo,
+      pendiente: filtro.pendiente ?? false,
       ...(texto
         ? { OR: [{ email: { contains: texto, mode: 'insensitive' as const } }, { nombre: { contains: texto, mode: 'insensitive' as const } }] }
         : {}),
@@ -87,10 +89,24 @@ export class PrismaUsuarioRepository implements UsuarioRepository {
   }
 
   async contarPorRol(): Promise<Record<Rol, number>> {
-    const grupos = await this.prisma.usuario.groupBy({ by: ['rol'], where: { activo: true }, _count: { _all: true } })
+    const grupos = await this.prisma.usuario.groupBy({ by: ['rol'], where: { activo: true, pendiente: false }, _count: { _all: true } })
     const r: Record<Rol, number> = { administrador: 0, entrenador: 0, nadador: 0 }
     for (const g of grupos) r[g.rol] = g._count._all
     return r
+  }
+
+  contarPendientes(): Promise<number> {
+    return this.prisma.usuario.count({ where: { pendiente: true } })
+  }
+
+  async aprobar(id: string): Promise<Usuario | null> {
+    const r = await this.prisma.usuario.updateManyAndReturn({ where: { id, pendiente: true }, data: { pendiente: false } })
+    return r[0] ? aDominio(r[0]) : null
+  }
+
+  async borrarPendiente(id: string): Promise<boolean> {
+    const r = await this.prisma.usuario.deleteMany({ where: { id, pendiente: true } })
+    return r.count > 0
   }
 
   async obtenerHash(id: string): Promise<string | null> {

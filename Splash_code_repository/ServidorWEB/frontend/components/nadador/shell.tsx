@@ -1,11 +1,12 @@
 'use client'
 
-import { ChartNoAxesCombined, History, LayoutDashboard, LogOut, Menu, UserRound, Waves, X, type LucideIcon } from 'lucide-react'
+import { Bell, ChartNoAxesCombined, History, LayoutDashboard, LogOut, Menu, UserRound, Waves, X, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useId, useRef, useState } from 'react'
 
 import { useCuenta } from '@/lib/cuenta'
+import { api } from '@/lib/api'
 
 export type OpcionMenu = { href: string; texto: string; icono: LucideIcon }
 
@@ -19,8 +20,10 @@ const OPCIONES_NADADOR: OpcionMenu[] = [
 export const iniciales = (nombre: string) =>
   nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')
 
-/** El marco del módulo del nadador. */
+/** El marco del módulo del nadador. El cuestionario inicial (/nadador/bienvenida) va a pantalla completa, sin menú. */
 export function ShellNadador({ children }: { children: React.ReactNode }) {
+  const ruta = usePathname()
+  if (ruta.startsWith('/nadador/bienvenida')) return <>{children}</>
   return <ShellModulo opciones={OPCIONES_NADADOR} rol="Nadador">{children}</ShellModulo>
 }
 
@@ -35,6 +38,22 @@ export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[
   const [abierto, setAbierto] = useState(false)
   const botonMenu = useRef<HTMLButtonElement>(null)
   const idMenu = useId()
+  const [solicitudes, setSolicitudes] = useState(0)
+  useEffect(() => {
+    if (rol !== 'Administrador') return
+    let vivo = true
+    const cargar = () => {
+      void api.adminSolicitudesEntrenador()
+        .then((r) => { if (vivo) setSolicitudes(r.total) })
+        .catch((error: unknown) => { if (vivo) console.error('No se pudieron cargar las solicitudes de entrenadores:', error) })
+    }
+    cargar()
+    const intervalo = window.setInterval(cargar, 30000)
+    return () => {
+      vivo = false
+      window.clearInterval(intervalo)
+    }
+  }, [rol])
   const inicio = opciones[0]?.href ?? '/'
   const activa = (href: string) => (href === inicio ? ruta === href : ruta.startsWith(href))
   const tema = rol === 'Nadador' ? 'nadador' : rol === 'Entrenador' ? 'entrenador' : 'administrador'
@@ -109,7 +128,15 @@ export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[
           <path d="M0 60 C 50 40, 90 80, 140 60 S 200 40, 220 55 V160 H0 Z" fill="var(--acento)" fillOpacity="0.18" />
           <path d="M0 90 C 60 70, 110 110, 160 90 S 210 75, 220 88 V160 H0 Z" fill="var(--acento-2)" fillOpacity="0.12" />
         </svg>
-        <div className="relative mb-8 px-2">{logo}</div>
+        <div className="relative mb-8 flex items-center justify-between px-2">
+          {logo}
+          {rol === 'Administrador' && (
+            <Link href="/admin/entrenadores" className="relative flex size-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sky-100 transition hover:bg-white/10" aria-label="Solicitudes de entrenadores">
+              <Bell className="size-4" />
+              {solicitudes > 0 && <span className="absolute -right-1 -top-1 flex min-w-5 h-5 items-center justify-center rounded-full bg-[#EF4444] px-1 text-[10px] font-bold text-white">{solicitudes > 99 ? '99+' : solicitudes}</span>}
+            </Link>
+          )}
+        </div>
         <div className="relative flex-1 overflow-y-auto">{menu}</div>
         <div className="relative">{pie}</div>
       </aside>
@@ -117,9 +144,17 @@ export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[
       {/* celular / tablet: barra arriba con el menú desplegable */}
       <header className="sticky top-0 z-20 flex items-center justify-between bg-[var(--marino-1)] px-4 py-3 lg:hidden">
         {logo}
-        <button ref={botonMenu} onClick={() => setAbierto(!abierto)} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sky-100 hover:bg-white/10" aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto} aria-controls={idMenu}>
-          {abierto ? <X className="size-5" /> : <Menu className="size-5" />}
-        </button>
+        <div className="flex items-center gap-1">
+          {rol === 'Administrador' && (
+            <Link href="/admin/entrenadores" className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg text-sky-100 hover:bg-white/10" aria-label="Solicitudes de entrenadores">
+              <Bell className="size-5" />
+              {solicitudes > 0 && <span className="absolute right-0 top-0 flex min-w-4 h-4 items-center justify-center rounded-full bg-[#EF4444] px-1 text-[9px] font-bold text-white">{solicitudes > 99 ? '99+' : solicitudes}</span>}
+            </Link>
+          )}
+          <button ref={botonMenu} onClick={() => setAbierto(!abierto)} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sky-100 hover:bg-white/10" aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto} aria-controls={idMenu}>
+            {abierto ? <X className="size-5" /> : <Menu className="size-5" />}
+          </button>
+        </div>
       </header>
       <div id={idMenu} hidden={!abierto}>
         {abierto && (

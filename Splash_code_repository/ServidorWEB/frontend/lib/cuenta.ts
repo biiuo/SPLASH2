@@ -56,10 +56,12 @@ export function useCuenta() {
       fijar({ usuario, cargando: false })
       return usuario
     },
-    async registrarse(datos: { email: string; nombre: string; contrasena: string; telefono?: string | null }) {
-      const { usuario } = await api.registrarse(datos)
+    /** Devuelve `pendiente: true` si es un entrenador que espera la aprobación (no queda con la sesión iniciada). */
+    async registrarse(datos: { email: string; nombre: string; contrasena: string; rol: 'nadador' | 'entrenador'; telefono?: string | null }) {
+      const { usuario, pendiente } = await api.registrarse(datos)
+      if (pendiente) return { usuario, pendiente: true as const }
       fijar({ usuario, cargando: false })
-      return usuario
+      return { usuario, pendiente: false as const }
     },
     /** Después de cambiar los datos propios: la pantalla usa el usuario nuevo. */
     actualizado(usuario: Usuario) {

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import {
   ArrowRight,
+  CheckCircle2,
   Eye,
   EyeOff,
   Lock,
@@ -14,7 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { ErrorApi } from '@/lib/api'
-import { useCuenta } from '@/lib/cuenta'
+import { NOMBRE_ROL, useCuenta } from '@/lib/cuenta'
 
 interface AuthScreenProps {
   mode: 'login' | 'signup'
@@ -32,6 +33,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
   const [confirmarContrasena, setConfirmarContrasena] = useState('')
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [rol, setRol] = useState<'nadador' | 'entrenador'>('nadador')
 
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -40,6 +42,8 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
 
   const [enviando, setEnviando] = useState(false)
   const [errores, setErrores] = useState<string[]>([])
+  /** Entrenador recién registrado: espera la aprobación del administrador. */
+  const [solicitudEnviada, setSolicitudEnviada] = useState(false)
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault()
@@ -69,12 +73,18 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
       if (isLogin) {
         await cuenta.ingresar(email.trim(), contrasena)
       } else {
-        await cuenta.registrarse({
+        const r = await cuenta.registrarse({
           email: email.trim(),
           nombre: nombre.trim(),
           contrasena,
+          rol,
           telefono: telefono.trim() || null,
         })
+        if (r.pendiente) {
+          setSolicitudEnviada(true)
+          setContrasena('')
+          setConfirmarContrasena('')
+        }
       }
     } catch (err) {
       setErrores(
@@ -156,14 +166,23 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
 
           {/* COLUMNA DERECHA: Panel Soft Translúcido con curvatura S-Wave limpia */}
           <div className={`translucent-wave-pane w-full md:w-[60%] md:-ml-[2%] ${isLogin ? 'px-8 sm:px-14 md:pl-24 md:pr-14 py-10 sm:py-12' : 'px-6 sm:px-10 md:pl-20 md:pr-10 py-7 sm:py-8'} flex flex-col justify-center relative`}>
+            <button
+              type="button"
+              onClick={onBack}
+              className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-[#06182c]/70 text-sky-100 shadow-lg backdrop-blur-md transition hover:border-white/50 hover:bg-white/10 hover:text-white sm:right-6 sm:top-6"
+              aria-label="Cerrar y volver al inicio"
+              title="Cerrar"
+            >
+              <X className="h-5 w-5" />
+            </button>
             <div className="w-full max-w-[420px] mx-auto">
-              {/* Botón Volver para móvil */}
+              {/* Botón cerrar para móvil */}
               <button
                 type="button"
                 onClick={onBack}
-                className="mb-6 inline-flex items-center gap-2 text-xs font-semibold text-sky-200 hover:text-white md:hidden cursor-pointer"
+                className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.08] px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-white/15 hover:text-white md:hidden cursor-pointer"
               >
-                <X className="w-4 h-4" /> Volver al inicio
+                <X className="w-4 h-4" /> Cerrar
               </button>
 
               <div className="mb-7">
@@ -177,6 +196,26 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
                 </p>
               </div>
 
+              {solicitudEnviada ? (
+                <div role="status" className="rounded-3xl border border-emerald-300/40 bg-emerald-950/60 p-6 text-sm text-emerald-50 backdrop-blur-md">
+                  <CheckCircle2 className="mb-3 h-8 w-8 text-emerald-300" />
+                  <p className="text-base font-bold text-white">¡Solicitud enviada!</p>
+                  <p className="mt-2 leading-relaxed text-emerald-50/90">
+                    Tu cuenta de entrenador ({email.trim()}) quedó registrada y está esperando la aprobación del administrador.
+                    Cuando la acepte, podrás iniciar sesión con tu correo y contraseña.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSolicitudEnviada(false)
+                      onLogin()
+                    }}
+                    className="soft-cta-pill mt-5 w-full rounded-full py-3 text-sm font-extrabold cursor-pointer"
+                  >
+                    Ir a iniciar sesión
+                  </button>
+                </div>
+              ) : (
               <form onSubmit={enviar} className={isLogin ? 'space-y-4' : 'space-y-3'} noValidate>
                 {/* CAMPOS SIGN UP */}
                 {!isLogin && (
@@ -331,6 +370,39 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
                   </div>
                 )}
 
+                {/* SELECTOR DE ROL (SIGN UP) */}
+                {!isLogin && (
+                  <div>
+                    <label className="block text-xs font-semibold text-sky-100/90 mb-1.5 ml-3">
+                      Soy
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['nadador', 'entrenador'] as const).map((r) => {
+                        const active = rol === r
+                        return (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setRol(r)}
+                            className={`py-2.5 px-4 rounded-full text-xs font-bold transition flex items-center justify-center gap-2 border cursor-pointer ${
+                              active
+                                ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-md shadow-sky-400/25'
+                                : 'bg-[#0d2847] text-white border-white/20 hover:bg-[#113258]'
+                            }`}
+                          >
+                            <span>{NOMBRE_ROL[r]}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {rol === 'entrenador' && (
+                      <p className="mt-2 ml-3 text-[11px] leading-snug text-sky-100/75">
+                        Las cuentas de entrenador las aprueba el administrador antes de poder ingresar.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* FILA RECORDAR / TÉRMINOS */}
                 {isLogin ? (
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 px-1">
@@ -406,6 +478,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
                   </button>
                 </div>
               </form>
+              )}
 
               {/* ENLACE INFERIOR ALTERNAR LOGIN / REGISTRO */}
               <div className="mt-6 text-center">

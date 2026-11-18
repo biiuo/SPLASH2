@@ -202,7 +202,7 @@ export function HeroCarousel({
     <section
       id="heroCarouselSection"
       aria-label="Carrusel principal SafeSplash"
-      className="relative flex min-h-[640px] w-full flex-1 flex-col justify-between overflow-hidden select-none bg-slate-950 text-white lg:min-h-[720px]"
+      className="relative flex h-[100dvh] w-full flex-col justify-between overflow-hidden select-none bg-slate-950 text-white"
     >
       {/* 1. CAPA DE FONDO DEL CARRUSEL (Fotos reales con efecto Ken Burns y degradados) */}
       <div id="heroBgLayer" className="absolute inset-0 z-0 bg-slate-900">
@@ -225,7 +225,7 @@ export function HeroCarousel({
       </div>
 
       {/* 2. NAVBAR SUPERIOR INTEGRADO SOBRE EL HERO */}
-      <header className="relative z-20 flex w-full items-center justify-between gap-2 px-4 pt-5 pb-3 sm:px-12 lg:px-16">
+      <header className="relative z-20 flex w-full shrink-0 items-center justify-between gap-2 px-4 pt-3 pb-2 sm:px-8 sm:pt-5 sm:pb-3 lg:px-16">
         <button
           type="button"
           onClick={() => goToSlide(0)}
@@ -352,7 +352,7 @@ export function HeroCarousel({
       </div>
 
       {/* 3. CONTENIDO PRINCIPAL DEL CARRUSEL (Rail editorial + Texto Hero + Tarjetas Preview) */}
-      <div className="relative z-20 mx-auto my-auto grid w-full max-w-[1440px] grid-cols-1 items-center gap-8 px-6 pt-4 pb-28 sm:px-12 sm:pb-32 lg:grid-cols-12 lg:gap-6 lg:px-16">
+      <div className="relative z-20 mx-auto my-auto grid min-h-0 w-full max-w-[1440px] grid-cols-1 items-center gap-4 px-4 pt-2 pb-[132px] sm:gap-6 sm:px-8 sm:pb-36 lg:grid-cols-12 lg:gap-6 lg:px-16 lg:pb-32">
         {/* Columna Izquierda: Indicador vertical de progreso + Textos principales */}
         <div className="flex items-stretch gap-5 sm:gap-7 lg:col-span-6">
           {/* Rail vertical con dots interactivos */}
@@ -390,7 +390,7 @@ export function HeroCarousel({
               <span>{currentItem.tag}</span>
             </div>
 
-            <h1 className="text-3xl font-black leading-[1.08] tracking-tight text-white drop-shadow-sm sm:text-5xl xl:text-[54px]">
+            <h1 className="text-[clamp(2rem,5vw,3.375rem)] font-black leading-[1.08] tracking-tight text-white drop-shadow-sm">
               {currentItem.title}
               <br />
               <span className="text-sky-300">{currentItem.highlight}</span>

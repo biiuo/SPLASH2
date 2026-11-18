@@ -40,6 +40,15 @@ export default function DashboardAdmin() {
         lateral={r ? <><CifraHero valor={String(r.sesiones.activa)} texto="sesiones en curso" /><CifraHero valor={String(r.usuarios.nadador + r.usuarios.entrenador)} texto="cuentas activas" /></> : undefined}
       />
       {problema && <Aviso tipo="error">{problema}</Aviso>}
+      {!!r?.pendientes && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
+          <span>
+            <UserCog className="mr-2 inline size-4" />
+            {r.pendientes === 1 ? 'Hay 1 entrenador esperando' : `Hay ${r.pendientes} entrenadores esperando`} tu aprobación para poder ingresar.
+          </span>
+          <Link href="/admin/entrenadores" className={BOTON.primario}>Revisar solicitudes</Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Kpi icono={Users} etiqueta="Nadadores registrados" valor={r ? String(r.usuarios.nadador) : '…'} nota="cuentas activas" />

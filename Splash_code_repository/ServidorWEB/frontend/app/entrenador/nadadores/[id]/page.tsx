@@ -2,15 +2,18 @@
 
 import { ArrowLeft, Gauge, Timer, TrendingUp, Waves } from 'lucide-react'
 import Link from 'next/link'
-import { use } from 'react'
+import { use, useEffect, useState } from 'react'
 
 import { carrilesDe, metricas, useDatosEntrenador } from '@/components/entrenador/datos'
 import { ProgresoObjetivo } from '@/components/entrenador/progreso-objetivo'
 import { Linea } from '@/components/graficos'
+import { FichaPerfil, TablaMarcas } from '@/components/nadador/perfil-deportivo'
 import { Encabezado } from '@/components/nadador/shell'
 import { Aviso, BOTON, EstadoSesion, Kpi, Tarjeta } from '@/components/nadador/ui'
 import { fechaCorta, formatearMetros, formatearSegundos, formatearVel, horaCorta } from '@/lib/largos'
 import { cumplimiento } from '@/lib/objetivos'
+import { api } from '@/lib/api'
+import type { VistaPerfil } from '@/lib/tipos'
 
 const diaCorto = (t: number) => new Date(t).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
 
@@ -26,6 +29,11 @@ export default function PerfilNadador({ params }: { params: Promise<{ id: string
   const mayorDistancia = filas.reduce<(typeof filas)[number] | null>((a, f) => (!a || f.carril.distancia_m > a.carril.distancia_m ? f : a), null)
   const grupos = datos?.grupos.filter((g) => g.nadadores.some((x) => x.id === id)) ?? []
   const objetivos = datos?.objetivos.filter((o) => o.nadador_id === id) ?? []
+  // perfil deportivo (cuestionario inicial y tiempos que declaró el nadador)
+  const [perfil, setPerfil] = useState<VistaPerfil | null | 'error'>(null)
+  useEffect(() => {
+    api.perfilDeportivoDe(id).then(setPerfil).catch(() => setPerfil('error'))
+  }, [id])
 
   return (
     <>
@@ -45,6 +53,31 @@ export default function PerfilNadador({ params }: { params: Promise<{ id: string
             <Kpi icono={TrendingUp} etiqueta="Mejor velocidad" valor={m.velocidad_max_ms ? m.velocidad_max_ms.toFixed(2) : '—'} unidad="m/s" nota="mejor marca, largo detectado" />
             <Kpi icono={Timer} etiqueta="Mejor largo" valor={formatearSegundos(m.mejor_largo_s)} nota="mejor marca, largo detectado" />
           </div>
+
+          <Tarjeta className="mt-6" titulo="Perfil deportivo" subtitulo="Lo que el nadador contó en su cuestionario inicial y los tiempos que registró.">
+            {perfil === null && <p className="text-sm text-[#64748B]">Cargando…</p>}
+            {perfil === 'error' && <Aviso tipo="error">No se pudo cargar el perfil deportivo.</Aviso>}
+            {perfil && perfil !== 'error' && perfil.estado !== 'completo' && perfil.historia.length === 0 && (
+              <Aviso>{n.nombre} todavía no completó su perfil deportivo.</Aviso>
+            )}
+            {perfil && perfil !== 'error' && (perfil.estado === 'completo' || perfil.historia.length > 0) && (
+              <>
+                {perfil.estado !== 'completo' && <div className="mb-4"><Aviso>El perfil está incompleto: muestra lo que contestó hasta ahora.</Aviso></div>}
+                <FichaPerfil vista={perfil} />
+                {perfil.marcas.length > 0 && (
+                  <>
+                    <h3 className="mb-2 mt-6 text-sm font-semibold text-[#0F172A]">Tiempos declarados</h3>
+                    <TablaMarcas marcas={perfil.marcas} />
+                  </>
+                )}
+                {(perfil.respuestas.tuvo_lesion || perfil.respuestas.lesion_detalle) && (
+                  <p className="mt-4 rounded-xl bg-[#FFF7ED] px-4 py-3 text-sm text-[#9A3412]">
+                    Indicó haber tenido una lesión que afectó su entrenamiento{perfil.respuestas.lesion_detalle ? `: «${perfil.respuestas.lesion_detalle}»` : '.'} (dato informativo, no es un diagnóstico).
+                  </p>
+                )}
+              </>
+            )}
+          </Tarjeta>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <Tarjeta titulo="Evolución de la velocidad" subtitulo="Velocidad media de cada sesión.">

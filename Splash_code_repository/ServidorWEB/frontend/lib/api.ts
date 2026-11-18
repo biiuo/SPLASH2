@@ -29,6 +29,9 @@ import type {
   Nadador,
   HorarioGrupo,
   NivelGrupo,
+  RespuestasPerfil,
+  Estilo,
+  VistaPerfil,
 } from './tipos'
 import type { ArchivoZonas, Zona } from './zonas'
 
@@ -76,8 +79,9 @@ function avisarSinSesion() {
 
 export const api = {
   // ---- cuenta (el token lo guarda la web en una cookie que el navegador no puede leer) ----
-  registrarse: (d: { email: string; nombre: string; contrasena: string; telefono?: string | null }) =>
-    pedir<{ usuario: Usuario }>('auth/registro', 'POST', d),
+  /** El entrenador queda `pendiente` (sin sesión) hasta que el administrador lo acepte. */
+  registrarse: (d: { email: string; nombre: string; contrasena: string; rol?: 'nadador' | 'entrenador'; telefono?: string | null }) =>
+    pedir<{ usuario: Usuario; pendiente?: true }>('auth/registro', 'POST', d),
   ingresar: (d: { email: string; contrasena: string }) => pedir<{ usuario: Usuario }>('auth/ingresar', 'POST', d),
   yo: () => pedir<Usuario>('auth/yo'),
   /** Cambia el nombre propio (el token nuevo lo guarda la web en la cookie). */
@@ -202,8 +206,9 @@ export const api = {
   // ---- administración (solo administrador) ----
   adminResumen: () => pedir<ResumenAdmin>('admin/resumen'),
   /** Una página de cuentas (10 por defecto) y el total que cumple el filtro. */
-  adminUsuarios: (f: { texto?: string; rol?: Rol | ''; activo?: '' | 'true' | 'false'; pagina?: number; porPagina?: number } = {}) => {
+  adminUsuarios: (f: { texto?: string; rol?: Rol | ''; activo?: '' | 'true' | 'false'; pendiente?: boolean; pagina?: number; porPagina?: number } = {}) => {
     const q = new URLSearchParams()
+    if (f.pendiente) q.set('pendiente', 'true')
     if (f.texto) q.set('texto', f.texto)
     if (f.rol) q.set('rol', f.rol)
     if (f.activo) q.set('activo', f.activo)
@@ -218,6 +223,23 @@ export const api = {
     pedir<Usuario>(`admin/usuarios/${encodeURIComponent(id)}`, 'PATCH', d),
   adminRestablecerContrasena: (id: string, nueva: string) => pedir<{ ok: true }>(`admin/usuarios/${encodeURIComponent(id)}/contrasena`, 'POST', { nueva }),
   adminMonitoreo: () => pedir<Monitoreo>('admin/monitoreo'),
+  /** Entrenadores registrados que esperan aprobación. */
+  adminSolicitudesEntrenador: () => pedir<{ usuarios: Usuario[]; total: number }>('admin/usuarios?pendiente=true&por_pagina=50'),
+  adminAprobarEntrenador: (id: string) => pedir<Usuario>(`admin/usuarios/${encodeURIComponent(id)}/aprobar`, 'POST'),
+  adminRechazarEntrenador: (id: string) => pedir<{ ok: true }>(`admin/usuarios/${encodeURIComponent(id)}/rechazar`, 'POST'),
+
+  // ---- perfil deportivo del nadador ----
+  miPerfilDeportivo: () => pedir<VistaPerfil>('perfil-nadador/yo'),
+  /** Guardado progresivo: solo lo que cambia (null borra una respuesta). */
+  guardarPerfilDeportivo: (respuestas: { [K in keyof RespuestasPerfil]?: RespuestasPerfil[K] | null }, etapa?: number) =>
+    pedir<VistaPerfil>('perfil-nadador/yo', 'PUT', { respuestas, etapa }),
+  finalizarPerfilDeportivo: () => pedir<VistaPerfil>('perfil-nadador/yo/finalizar', 'POST'),
+  omitirPerfilDeportivo: () => pedir<VistaPerfil>('perfil-nadador/yo/omitir', 'POST'),
+  agregarTiempoPersonal: (t: { estilo: Estilo; distancia_m: number; piscina_m: number; tiempo_ms: number; fecha: string }) =>
+    pedir<VistaPerfil>('perfil-nadador/yo/tiempos', 'POST', t),
+  borrarTiempoPersonal: (id: string) => pedir<VistaPerfil>(`perfil-nadador/yo/tiempos/${encodeURIComponent(id)}`, 'DELETE'),
+  /** Entrenador (nadadores de sus grupos) y administrador. */
+  perfilDeportivoDe: (nadadorId: string) => pedir<VistaPerfil>(`perfil-nadador/${encodeURIComponent(nadadorId)}`),
 
   // ---- objetivos ----
   objetivos: () => pedir<Objetivo[]>('objetivos'),

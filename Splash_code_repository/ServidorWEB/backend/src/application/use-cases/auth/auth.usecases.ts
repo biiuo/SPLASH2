@@ -1,4 +1,4 @@
-import { ROL_REGISTRO_PUBLICO, type Rol, type Usuario } from '../../../domain/entities/usuario.entity'
+import { ROL_REGISTRO_PUBLICO, ROLES_REGISTRABLES, type Rol, type Usuario } from '../../../domain/entities/usuario.entity'
 import type { UsuarioRepository } from '../../../domain/repositories/usuario.repository'
 import type { CifradorContrasenas, EmisorTokens } from '../../ports/autenticacion.ports'
 import {
@@ -9,11 +9,19 @@ import {
 } from '../../exceptions/aplicacion.exceptions'
 import { normalizarEmail, problemasDeCuenta, telefonoDe } from './validar-cuenta'
 
-export type RegistroEntrada = { email: string; nombre: string; contrasena: string; telefono?: string | null }
+export type RegistroEntrada = { email: string; nombre: string; contrasena: string; rol?: Rol; telefono?: string | null }
 export type IngresoEntrada = { email: string; contrasena: string }
 export type SesionUsuario = { token: string; usuario: Usuario }
+/** Un entrenador recién registrado: no recibe token hasta que el administrador lo apruebe. */
+export type RegistroPendiente = { pendiente: true; usuario: Usuario }
 
-/** Una cuenta nueva con rol inicial de nadador. Queda con la sesión iniciada. */
+/** Lo que ve quien intenta entrar con una cuenta de entrenador sin aprobar. */
+export const MENSAJE_PENDIENTE = 'Tu cuenta de entrenador está esperando la aprobación del administrador. Podrás ingresar cuando la acepte.'
+
+/**
+ * Una cuenta nueva de nadador o entrenador. El nadador queda con la sesión iniciada; el entrenador queda pendiente
+ * hasta que un administrador lo apruebe (sin token).
+ */
 export class RegistrarseUseCase {
   constructor(
     private readonly usuarios: UsuarioRepository,
@@ -21,8 +29,10 @@ export class RegistrarseUseCase {
     private readonly tokens: EmisorTokens,
   ) {}
 
-  async execute(entrada: RegistroEntrada): Promise<SesionUsuario> {
+  async execute(entrada: RegistroEntrada): Promise<SesionUsuario | RegistroPendiente> {
     const errores = problemasDeCuenta(entrada ?? {})
+    const rol = entrada?.rol ?? ROL_REGISTRO_PUBLICO
+    if (!ROLES_REGISTRABLES.includes(rol)) errores.push(`El rol tiene que ser ${ROLES_REGISTRABLES.join(' o ')}.`)
     let telefono: string | null | undefined
     try {
       telefono = telefonoDe(entrada?.telefono)
@@ -37,10 +47,12 @@ export class RegistrarseUseCase {
     const usuario = await this.usuarios.crear({
       email,
       nombre: entrada.nombre.trim(),
-      rol: ROL_REGISTRO_PUBLICO,
+      rol,
       passwordHash: await this.cifrador.cifrar(entrada.contrasena),
       telefono: telefono ?? null,
+      pendiente: rol === 'entrenador',
     })
+    if (usuario.pendiente) return { pendiente: true, usuario }
     return { token: await this.tokens.emitir({ id: usuario.id, rol: usuario.rol, nombre: usuario.nombre }), usuario }
   }
 }
@@ -59,6 +71,7 @@ export class IngresarUseCase {
     const encontrado = email && contrasena ? await this.usuarios.buscarParaIngresar(email) : null
     const ok = encontrado ? await this.cifrador.coincide(contrasena, encontrado.passwordHash) : false
     if (!encontrado || !ok) throw new NoAutenticadoException('Correo o contraseña incorrectos.')
+    if (encontrado.pendiente) throw new NoAutenticadoException(MENSAJE_PENDIENTE)
     if (!encontrado.activo) throw new NoAutenticadoException('La cuenta está desactivada.')
 
     const { passwordHash: _, ...usuario } = encontrado

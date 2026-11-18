@@ -48,6 +48,15 @@ enum TipoObjetivo {
   @@map("tipo_objetivo")
 }
 
+enum EstiloNado {
+  libre
+  espalda
+  pecho
+  mariposa
+
+  @@map("estilo_nado")
+}
+
 enum TipoEvento {
   cruce_nodo
   viraje
@@ -66,6 +75,8 @@ model Usuario {
   telefono      String?
   rol           RolUsuario
   activo        Boolean    @default(true)
+  /// Entrenador registrado que espera la aprobación del administrador: no puede iniciar sesión.
+  pendiente     Boolean    @default(false)
   creado_en     DateTime   @default(now()) @db.Timestamptz(6)
 
   perfil_nadador      Nadador?        @relation("CuentaDelNadador")
@@ -89,6 +100,8 @@ model Nadador {
   sesiones  SesionNadador[]
   grupos    GrupoNadador[]
   objetivos Objetivo[]
+  perfil    PerfilNadador?
+  tiempos   TiempoPersonal[]
 
   @@map("nadadores")
 }
@@ -281,4 +294,37 @@ model Objetivo {
 
   @@index([nadador_id], map: "objetivos_nadador_idx")
   @@map("objetivos")
+}
+
+/// El perfil deportivo del nadador (cuestionario inicial). Las respuestas las valida el backend.
+model PerfilNadador {
+  nadador_id     String    @id @db.Uuid
+  respuestas     Json      @default("{}")
+  /// Por dónde va el cuestionario, para retomarlo.
+  etapa          Int       @default(0) @db.SmallInt
+  /// Eligió "completar más tarde".
+  omitido        Boolean   @default(false)
+  completado_en  DateTime? @db.Timestamptz(6)
+  actualizado_en DateTime  @default(now()) @db.Timestamptz(6)
+
+  nadador Nadador @relation(fields: [nadador_id], references: [id], onDelete: Cascade)
+
+  @@map("perfiles_nadador")
+}
+
+/// Un tiempo que declara el nadador (estilo, distancia, piscina). Sirve para mejor marca, promedio y último tiempo.
+model TiempoPersonal {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nadador_id  String     @db.Uuid
+  estilo      EstiloNado
+  distancia_m Int
+  piscina_m   Int        @db.SmallInt
+  tiempo_ms   Int
+  fecha       DateTime   @db.Date
+  creado_en   DateTime   @default(now()) @db.Timestamptz(6)
+
+  nadador Nadador @relation(fields: [nadador_id], references: [id], onDelete: Cascade)
+
+  @@index([nadador_id, estilo, distancia_m, piscina_m], map: "tiempos_personales_nadador_idx")
+  @@map("tiempos_personales")
 }

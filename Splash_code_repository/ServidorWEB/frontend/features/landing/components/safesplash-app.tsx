@@ -62,7 +62,7 @@ export function SafeSplashApp() {
   const entrar = () => setView(cuenta.usuario ? 'panel' : 'login')
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-white text-slate-950">
+    <main className="overflow-x-hidden bg-white text-slate-950">
       {/* Hero Carrusel con Fotos Reales de Piscina + Franja Panorámica del Nadador (100% de lado a lado) */}
       <HeroCarousel
         usuario={cuenta.usuario}
@@ -75,11 +75,11 @@ export function SafeSplashApp() {
       />
 
       {/* Sección Cómo Funciona */}
-      <section id="como-funciona" className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-10">
-        <div className="grid gap-12 lg:grid-cols-[.8fr_1.2fr] lg:items-center">
+      <section id="como-funciona" className="min-h-[100dvh] scroll-mt-0 bg-white px-5 py-16 sm:px-8 sm:py-20 lg:px-10 lg:py-24">
+        <div className="mx-auto grid min-h-[calc(100dvh-8rem)] max-w-7xl items-center gap-10 lg:grid-cols-[.8fr_1.2fr] lg:gap-16">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wider text-blue-600">Simple y preciso</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
               Tu entrenamiento,<br />más inteligente.
             </h2>
             <p className="mt-4 max-w-md leading-7 text-slate-500">
@@ -94,13 +94,28 @@ export function SafeSplashApp() {
         </div>
       </section>
 
-      {/* Footer corporativo de SafeSplash */}
-      <footer className="border-t border-slate-100 px-5 py-8 sm:px-8 lg:px-10">
+      {/* Sección informativa: tecnología */}
+      <section className="min-h-[100dvh] scroll-mt-0 bg-slate-950 px-5 py-16 text-white sm:px-8 sm:py-20 lg:px-10 lg:py-24">
+        <div className="mx-auto flex min-h-[calc(100dvh-8rem)] max-w-7xl flex-col justify-center">
+          <p className="text-sm font-semibold uppercase tracking-wider text-sky-400">Tecnología SafeSplash</p>
+          <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
+            Seguimiento preciso en cada carril.
+          </h2>
+          <div className="mt-10 grid gap-4 md:grid-cols-3">
+            <FeatureCard number="01" title="Visión computacional" copy="Detecta a cada nadador y registra su recorrido sin sensores personales." />
+            <FeatureCard number="02" title="Métricas claras" copy="Consulta velocidades, largos, tiempos y evolución por sesión." />
+            <FeatureCard number="03" title="Trabajo coordinado" copy="Entrenadores y nadadores comparten información desde una sola plataforma." />
+          </div>
+        </div>
+      </section>
+
+      <footer className="min-h-24 border-t border-slate-100 px-5 py-8 sm:px-8 lg:px-10">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
           <span className="font-semibold text-slate-700">Safe<span className="text-blue-600">Splash</span></span>
           <span>Entrena mejor. Nada seguro. Universidad del Norte.</span>
         </div>
       </footer>
+
     </main>
   )
 }
@@ -122,6 +137,16 @@ function Step({ number, icon: Icon, title, copy }: { number: string; icon: typeo
       <h3 className="mt-7 font-semibold">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-slate-500">{copy}</p>
     </div>
+  )
+}
+
+function FeatureCard({ number, title, copy }: { number: string; title: string; copy: string }) {
+  return (
+    <article className="rounded-3xl border border-white/10 bg-white/[0.06] p-6 backdrop-blur-sm">
+      <span className="text-xs font-bold text-sky-400">{number}</span>
+      <h3 className="mt-5 text-xl font-semibold">{title}</h3>
+      <p className="mt-3 text-sm leading-6 text-slate-300">{copy}</p>
+    </article>
   )
 }
 

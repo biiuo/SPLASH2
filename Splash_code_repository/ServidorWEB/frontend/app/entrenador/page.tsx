@@ -1,21 +1,19 @@
 'use client'
 
-import { Activity, AlertTriangle, CheckCircle2, PlayCircle, Users } from 'lucide-react'
+import { Activity, CheckCircle2, PlayCircle, Users } from 'lucide-react'
 import Link from 'next/link'
 
-import { conErrores } from '@/components/admin/comun'
-import { carrilesDe, metricas, useDatosEntrenador } from '@/components/entrenador/datos'
+import { metricas, useDatosEntrenador } from '@/components/entrenador/datos'
 import { BOTON_HERO, CifraHero, HeroPanel } from '@/components/hero-panel'
 import { Aviso, BOTON, EstadoSesion, Kpi, Tarjeta } from '@/components/nadador/ui'
 import { SesionPanel } from '@/features/sesion'
 import { useCuenta } from '@/lib/cuenta'
 import { fechaCorta, formatearMetros, formatearVel, horaCorta } from '@/lib/largos'
-import { cumplimiento, NOMBRE_TIPO } from '@/lib/objetivos'
 
 const DIA = 24 * 60 * 60 * 1000
 const hoy = (ahora: number) => new Date(ahora).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
-/** Dashboard del entrenador: su grupo de un vistazo, alertas y las últimas sesiones. */
+/** Dashboard del entrenador: su grupo de un vistazo y las últimas sesiones. */
 export default function DashboardEntrenador() {
   const { usuario } = useCuenta()
   const { datos, problema, actualizado } = useDatosEntrenador()
@@ -24,26 +22,6 @@ export default function DashboardEntrenador() {
   const deHoy = sesiones.filter((s) => Date.parse(s.inicio) >= inicioHoy)
   const semana = sesiones.filter((s) => Date.parse(s.inicio) >= actualizado - 7 * DIA && s.estado !== 'cancelada')
   const rendimiento = metricas(semana.flatMap((s) => s.por_carril.map((c) => ({ sesion: s, carril: c }))))
-
-  // alertas: lo que el entrenador debería mirar hoy
-  const alertas: { texto: string; href?: string }[] = []
-  if (datos) {
-    for (const s of sesiones.filter((x) => Date.parse(x.inicio) >= actualizado - 14 * DIA && conErrores(x)).slice(0, 5)) {
-      alertas.push({ texto: `Sesión del ${fechaCorta(s.inicio)} con errores de detección (sin datos o con más de la mitad estimado).`, href: `/entrenador/historial/${s.id}` })
-    }
-    for (const s of sesiones.filter((x) => x.estado === 'activa')) {
-      if (actualizado - Date.parse(s.inicio) > 2 * 60000 && s.tramos === 0) alertas.push({ texto: `La sesión en curso de las ${horaCorta(s.inicio)} todavía no tiene datos.`, href: '/entrenador/monitoreo' })
-    }
-    for (const n of datos.nadadores) {
-      const ultima = metricas(carrilesDe(n.usuario_id, sesiones)).ultima
-      if (!ultima || Date.parse(ultima) < actualizado - 14 * DIA) alertas.push({ texto: `${n.nombre} no entrena con vos hace más de 14 días.`, href: `/entrenador/nadadores/${n.id}` })
-    }
-    for (const o of datos.objetivos) {
-      const c = cumplimiento(o, sesiones)
-      const faltan = (Date.parse(`${o.hasta}T23:59:59`) - actualizado) / DIA
-      if (c.estado === 'en_curso' && faltan <= 7) alertas.push({ texto: `${o.nadador}: ${NOMBRE_TIPO[o.tipo].toLowerCase()} al ${c.porcentaje} %, vence en ${Math.max(0, Math.ceil(faltan))} días.`, href: '/entrenador/objetivos' })
-    }
-  }
 
   return (
     <>
@@ -75,17 +53,6 @@ export default function DashboardEntrenador() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Tarjeta titulo="Alertas" subtitulo="Lo que conviene revisar.">
-          {datos && alertas.length === 0 && <Aviso>Sin alertas.</Aviso>}
-          <ul className="flex flex-col gap-2">
-            {alertas.slice(0, 8).map((a) => (
-              <li key={a.texto} className="flex items-start gap-2 text-sm text-[#0F172A]">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[#B45309]" aria-hidden="true" />
-                {a.href ? <Link href={a.href} className="hover:underline">{a.texto}</Link> : a.texto}
-              </li>
-            ))}
-          </ul>
-        </Tarjeta>
         <Tarjeta titulo="Rendimiento del grupo" subtitulo="Últimos 7 días, todos tus nadadores.">
           <dl className="grid grid-cols-2 gap-4 text-sm">
             <Dato k="Distancia" v={formatearMetros(rendimiento.distancia_m)} />
