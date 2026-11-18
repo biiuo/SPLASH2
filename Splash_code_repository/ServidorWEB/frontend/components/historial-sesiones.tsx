@@ -4,12 +4,17 @@ import { Activity, Gauge, History, Waves } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 
+import { GraficaVelocidad } from '@/components/grafica-velocidad'
 import { ErrorApi, api } from '@/lib/api'
+import { csvDeSesion, descargarCsv, nombreCsv } from '@/lib/csv-sesion'
 import { useCuenta } from '@/lib/cuenta'
 import { formatearDuracion, formatearVelocidad } from '@/lib/resultados'
-import type { Grupo, ResumenSesion } from '@/lib/tipos'
+import type { Grupo, ResultadosSesion, ResumenSesion } from '@/lib/tipos'
 
 const SEMANA_MS = 7 * 24 * 60 * 60 * 1000
+
+/** La gráfica de velocidad de una sesión abierta en la tabla: se pide al abrirla. */
+type Grafica = { estado: 'cargando' } | { estado: 'error'; mensaje: string } | { estado: 'lista'; resultados: ResultadosSesion }
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -26,6 +31,35 @@ export function HistorialSesiones() {
     api.grupos().then(setGrupos).catch(() => setGrupos([]))
   }, [esNadador])
   const [problema, setProblema] = useState<string | null>(null)
+  const [graficas, setGraficas] = useState<Record<string, Grafica>>({})
+
+  /** Baja los eventos y tramos de una sesión como CSV (para depurar). Reusa los resultados si ya se pidieron para la gráfica. */
+  async function bajarCsv(s: ResumenSesion) {
+    try {
+      const abierta = graficas[s.id]
+      const resultados = abierta?.estado === 'lista' ? abierta.resultados : await api.resultadosSesion(s.id)
+      const nadadores = Object.fromEntries(s.por_carril.map((c) => [c.carril, c.nadador]))
+      descargarCsv(nombreCsv(s), csvDeSesion(s, resultados, nadadores))
+    } catch (e) {
+      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo bajar el CSV de la sesión.')
+    }
+  }
+
+  /** Abre o cierra la gráfica de velocidad de una sesión (los resultados se piden al abrirla). */
+  async function alternarGrafica(id: string) {
+    if (graficas[id]) {
+      setGraficas((g) => Object.fromEntries(Object.entries(g).filter(([k]) => k !== id)))
+      return
+    }
+    setGraficas((g) => ({ ...g, [id]: { estado: 'cargando' } }))
+    try {
+      const resultados = await api.resultadosSesion(id)
+      setGraficas((g) => (id in g ? { ...g, [id]: { estado: 'lista', resultados } } : g)) // si la cerró mientras cargaba, no se reabre
+    } catch (e) {
+      const mensaje = e instanceof ErrorApi ? e.message : 'No se pudieron cargar los resultados de la sesión.'
+      setGraficas((g) => (id in g ? { ...g, [id]: { estado: 'error', mensaje } } : g))
+    }
+  }
 
   const cargar = useCallback(async () => {
     try {
@@ -88,7 +122,7 @@ export function HistorialSesiones() {
         )}
         {!problema && delGrupo.length > 0 && (
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[44rem] text-left text-sm">
+            <table className="w-full min-w-[56rem] text-left text-sm">
               <thead className="text-xs uppercase tracking-wider text-slate-400">
                 <tr>
                   <th className="py-2 pr-4 font-semibold">Inicio</th>
@@ -98,13 +132,15 @@ export function HistorialSesiones() {
                   <th className="py-2 pr-4 font-semibold">Tramos</th>
                   <th className="py-2 pr-4 font-semibold">Distancia</th>
                   <th className="py-2 pr-4 font-semibold">Velocidad media</th>
-                  <th className="py-2 font-semibold">Iniciada por</th>
+                  <th className="py-2 pr-4 font-semibold">Iniciada por</th>
+                  <th className="py-2 font-semibold">Velocidad en el tiempo</th>
                 </tr>
               </thead>
               {/* un <tbody> por sesión: sus datos (inicio, duración, quién la inició) una vez, y debajo una fila por carril */}
               {delGrupo.map((s) => {
                 const filas = s.por_carril.length ? s.por_carril : [null]
                 const span = filas.length
+                const grafica = graficas[s.id]
                 return (
                   <tbody key={s.id} className="border-t border-slate-100">
                     {filas.map((c, i) => (
@@ -129,9 +165,50 @@ export function HistorialSesiones() {
                         <td className="py-2.5 pr-4">{c ? c.tramos : '—'}</td>
                         <td className="py-2.5 pr-4">{c?.distancia_m ? `${Math.round(c.distancia_m)} m` : '—'}</td>
                         <td className="py-2.5 pr-4">{c ? formatearVelocidad(c.velocidad_media_ms) : '—'}</td>
-                        {i === 0 && <td rowSpan={span} className="py-3 align-top text-slate-500">{s.iniciada_por ?? '—'}</td>}
+                        {i === 0 && <td rowSpan={span} className="py-3 pr-4 align-top text-slate-500">{s.iniciada_por ?? '—'}</td>}
+                        {i === 0 && (
+                          <td rowSpan={span} className="py-3 align-top whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => void alternarGrafica(s.id)}
+                              aria-expanded={!!grafica}
+                              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+                            >
+                              {grafica ? 'Ocultar' : 'Ver gráfica'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void bajarCsv(s)}
+                              title="Eventos y tramos de la sesión, para depurar"
+                              className="ml-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                            >
+                              CSV
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
+                    {grafica && (
+                      <tr>
+                        <td colSpan={9} className="pb-5">
+                          {grafica.estado === 'cargando' && <p className="text-sm text-slate-500">Cargando…</p>}
+                          {grafica.estado === 'error' && <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800">{grafica.mensaje}</p>}
+                          {grafica.estado === 'lista' &&
+                            (grafica.resultados.tramos.length === 0 ? (
+                              <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Esta sesión no tiene tramos medidos todavía.</p>
+                            ) : (
+                              <GraficaVelocidad
+                                tramos={grafica.resultados.tramos}
+                                eventos={grafica.resultados.eventos}
+                                inicio={Date.parse(s.inicio)}
+                                hasta={s.fin ? Date.parse(s.fin) : Date.now()}
+                                enCurso={!s.fin}
+                                nadadores={Object.fromEntries(s.por_carril.map((c) => [c.carril, c.nadador]))}
+                              />
+                            ))}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 )
               })}
