@@ -1,4 +1,4 @@
-import { ROLES_REGISTRABLES, type Rol, type Usuario } from '../../../domain/entities/usuario.entity'
+import { ROL_REGISTRO_PUBLICO, type Rol, type Usuario } from '../../../domain/entities/usuario.entity'
 import type { UsuarioRepository } from '../../../domain/repositories/usuario.repository'
 import type { CifradorContrasenas, EmisorTokens } from '../../ports/autenticacion.ports'
 import {
@@ -9,11 +9,11 @@ import {
 } from '../../exceptions/aplicacion.exceptions'
 import { normalizarEmail, problemasDeCuenta, telefonoDe } from './validar-cuenta'
 
-export type RegistroEntrada = { email: string; nombre: string; contrasena: string; rol: Rol; telefono?: string | null }
+export type RegistroEntrada = { email: string; nombre: string; contrasena: string; telefono?: string | null }
 export type IngresoEntrada = { email: string; contrasena: string }
 export type SesionUsuario = { token: string; usuario: Usuario }
 
-/** Una cuenta nueva de nadador o entrenador. Queda con la sesión iniciada. */
+/** Una cuenta nueva con rol inicial de nadador. Queda con la sesión iniciada. */
 export class RegistrarseUseCase {
   constructor(
     private readonly usuarios: UsuarioRepository,
@@ -23,7 +23,6 @@ export class RegistrarseUseCase {
 
   async execute(entrada: RegistroEntrada): Promise<SesionUsuario> {
     const errores = problemasDeCuenta(entrada ?? {})
-    if (!ROLES_REGISTRABLES.includes(entrada?.rol)) errores.push(`El rol tiene que ser ${ROLES_REGISTRABLES.join(' o ')}.`)
     let telefono: string | null | undefined
     try {
       telefono = telefonoDe(entrada?.telefono)
@@ -38,7 +37,7 @@ export class RegistrarseUseCase {
     const usuario = await this.usuarios.crear({
       email,
       nombre: entrada.nombre.trim(),
-      rol: entrada.rol,
+      rol: ROL_REGISTRO_PUBLICO,
       passwordHash: await this.cifrador.cifrar(entrada.contrasena),
       telefono: telefono ?? null,
     })

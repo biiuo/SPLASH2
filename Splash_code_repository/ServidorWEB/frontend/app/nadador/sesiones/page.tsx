@@ -15,12 +15,18 @@ const INICIAL = { dia: '', periodo: 'todo', estado: 'todos' as 'todos' | Sesion[
 
 /** Mis sesiones: el historial completo, con filtros, orden y exportación. */
 export default function MisSesiones() {
-  const { filas, problema } = useMisSesiones()
+  const { filas, problema, actualizado } = useMisSesiones()
   const [f, setF] = useState(INICIAL)
+  const [ahoraFiltro, setAhoraFiltro] = useState(() => Date.now())
+
+  function cambiarFiltros(filtros: typeof INICIAL) {
+    setAhoraFiltro(Date.now())
+    setF(filtros)
+  }
 
   const visibles = useMemo(() => {
     if (!filas) return null
-    const ahora = Date.now()
+    const ahora = Math.max(actualizado, ahoraFiltro)
     const r = filas.filter((x) => {
       const t = Date.parse(x.sesion.inicio)
       if (f.periodo !== 'todo' && t < ahora - Number(f.periodo) * DIA) return false
@@ -39,7 +45,7 @@ export default function MisSesiones() {
       velocidad: (a, b) => (b.velocidad_media_ms ?? -1) - (a.velocidad_media_ms ?? -1),
     }
     return r.sort(por[f.orden])
-  }, [filas, f])
+  }, [filas, f, actualizado, ahoraFiltro])
 
   const cambiado = JSON.stringify(f) !== JSON.stringify(INICIAL)
 
@@ -63,11 +69,11 @@ export default function MisSesiones() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
           <label className="text-sm text-[#64748B]">
             Fecha
-            <input type="date" value={f.dia} onChange={(e) => setF({ ...f, dia: e.target.value })} className={CAMPO} />
+            <input type="date" value={f.dia} onChange={(e) => cambiarFiltros({ ...f, dia: e.target.value })} className={CAMPO} />
           </label>
           <label className="text-sm text-[#64748B]">
             Período
-            <select value={f.periodo} onChange={(e) => setF({ ...f, periodo: e.target.value })} className={CAMPO}>
+            <select value={f.periodo} onChange={(e) => cambiarFiltros({ ...f, periodo: e.target.value })} className={CAMPO}>
               <option value="todo">Todo</option>
               <option value="7">Últimos 7 días</option>
               <option value="30">Últimos 30 días</option>
@@ -76,7 +82,7 @@ export default function MisSesiones() {
           </label>
           <label className="text-sm text-[#64748B]">
             Estado
-            <select value={f.estado} onChange={(e) => setF({ ...f, estado: e.target.value as typeof f.estado })} className={CAMPO}>
+            <select value={f.estado} onChange={(e) => cambiarFiltros({ ...f, estado: e.target.value as typeof f.estado })} className={CAMPO}>
               <option value="todos">Todos</option>
               <option value="activa">En curso</option>
               <option value="finalizada">Finalizada</option>
@@ -85,14 +91,14 @@ export default function MisSesiones() {
           </label>
           <label className="text-sm text-[#64748B]">
             Ordenar por
-            <select value={f.orden} onChange={(e) => setF({ ...f, orden: e.target.value as Orden })} className={CAMPO}>
+            <select value={f.orden} onChange={(e) => cambiarFiltros({ ...f, orden: e.target.value as Orden })} className={CAMPO}>
               <option value="fecha_desc">Fecha (más reciente)</option>
               <option value="fecha_asc">Fecha (más antigua)</option>
               <option value="distancia">Distancia (mayor)</option>
               <option value="velocidad">Velocidad (mayor)</option>
             </select>
           </label>
-          <button onClick={() => setF(INICIAL)} disabled={!cambiado} className={BOTON.terciario}>Limpiar filtros</button>
+          <button onClick={() => cambiarFiltros(INICIAL)} disabled={!cambiado} className={BOTON.terciario}>Limpiar filtros</button>
         </div>
       </Tarjeta>
 

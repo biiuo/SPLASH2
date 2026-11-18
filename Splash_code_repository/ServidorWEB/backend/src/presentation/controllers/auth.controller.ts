@@ -40,14 +40,13 @@ export class AuthController {
   @ApiOperation({
     summary: 'Crear una cuenta',
     description:
-      '`rol` es `nadador` o `entrenador` (un administrador no se puede registrar solo). Devuelve el token: la cuenta ' +
+      'La cuenta se crea con rol de nadador; un administrador puede cambiarlo. Devuelve el token: la cuenta ' +
       'queda con la sesión iniciada. Mandalo en las demás rutas como `Authorization: Bearer <token>` (botón Authorize).',
   })
   @ApiBody({
     schema: { type: 'object' },
     examples: {
-      entrenador: { summary: 'Entrenador', value: { email: 'entrenador@ejemplo.com', nombre: 'Ana Entrenadora', contrasena: 'clave-segura-1', rol: 'entrenador' } },
-      nadador: { summary: 'Nadador', value: { email: 'nadador@ejemplo.com', nombre: 'Juan Nadador', contrasena: 'clave-segura-2', rol: 'nadador' } },
+      cuenta: { summary: 'Cuenta nueva', value: { email: 'nadador@ejemplo.com', nombre: 'Juan Nadador', contrasena: 'clave-segura-2' } },
     },
   })
   @ApiCreatedResponse({ description: '`{ token, usuario: { id, email, nombre, rol, activo } }`' })

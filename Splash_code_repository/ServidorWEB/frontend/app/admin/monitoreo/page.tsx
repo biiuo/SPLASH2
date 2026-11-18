@@ -19,16 +19,17 @@ export default function MonitoreoAdmin() {
   const [problema, setProblema] = useState<string | null>(null)
   const [hora, setHora] = useState<number>(0)
 
-  const cargar = useCallback(async () => {
-    try {
-      const [mon, lista] = await Promise.all([api.adminMonitoreo(), api.sesionesRecientes(30)])
-      setM(mon)
-      setMedidas(lista.filter((s) => s.estado === 'activa'))
-      setProblema(null)
-      setHora(Date.now())
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo conectar con el servidor.')
-    }
+  const cargar = useCallback(() => {
+    return Promise.all([api.adminMonitoreo(), api.sesionesRecientes(30)])
+      .then(([mon, lista]) => {
+        setM(mon)
+        setMedidas(lista.filter((s) => s.estado === 'activa'))
+        setProblema(null)
+        setHora(Date.now())
+      })
+      .catch((e: unknown) => {
+        setProblema(e instanceof ErrorApi ? e.message : 'No se pudo conectar con el servidor.')
+      })
   }, [])
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export default function MonitoreoAdmin() {
     }
     for (const s of m.activas) {
       const datos = medidas.find((x) => x.id === s.id)
-      const minutos = (Date.now() - Date.parse(s.inicio)) / 60000
+      const minutos = (hora - Date.parse(s.inicio)) / 60000
       if (minutos > 2 && datos && datos.tramos === 0) alertas.push(`La sesión de ${s.iniciada_por ?? '—'} lleva ${Math.round(minutos)} min sin ningún tramo medido.`)
     }
   }
@@ -102,7 +103,7 @@ export default function MonitoreoAdmin() {
             const datos = medidas.find((x) => x.id === s.id)
             return (
               <div key={s.id} className="rounded-xl border border-[#E2E8F0] p-4">
-                <p className="font-semibold">{s.iniciada_por ?? '—'}{s.grupo ? ` · ${s.grupo}` : ' · sesión libre'} <span className="text-sm font-normal text-[#64748B]">· desde {horaCorta(s.inicio)} ({formatearDuracion(Date.now() - Date.parse(s.inicio))})</span></p>
+                <p className="font-semibold">{s.iniciada_por ?? '—'}{s.grupo ? ` · ${s.grupo}` : ' · sesión libre'} <span className="text-sm font-normal text-[#64748B]">· desde {horaCorta(s.inicio)} ({formatearDuracion(hora - Date.parse(s.inicio))})</span></p>
                 <table className="mt-2 w-full text-left text-sm tabular-nums">
                   <thead className="text-xs uppercase tracking-wider text-[#94A3B8]"><tr><th className="py-1 pr-4">Carril</th><th className="py-1 pr-4">Nadador</th><th className="py-1 pr-4 text-right">Tramos</th><th className="py-1 pr-4 text-right">Distancia</th><th className="py-1 text-right">Velocidad</th></tr></thead>
                   <tbody>

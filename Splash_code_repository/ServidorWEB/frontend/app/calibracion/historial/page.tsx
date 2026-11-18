@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { CalibracionesGuardadas } from '@/components/calibraciones-guardadas'
+import { CalibracionesGuardadas } from '@/features/calibracion'
 import { ConSesion } from '@/components/con-sesion'
 
 export const metadata: Metadata = {

@@ -41,7 +41,7 @@ export default function DashboardAdmin() {
       />
       {problema && <Aviso tipo="error">{problema}</Aviso>}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Kpi icono={Users} etiqueta="Nadadores registrados" valor={r ? String(r.usuarios.nadador) : '…'} nota="cuentas activas" />
         <Kpi icono={UserCog} etiqueta="Entrenadores" valor={r ? String(r.usuarios.entrenador) : '…'} nota="cuentas activas" />
         <Kpi icono={Activity} etiqueta="Sesiones realizadas" valor={r ? String(r.sesiones.total) : '…'} />

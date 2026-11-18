@@ -31,17 +31,21 @@ export function DetalleSesion({ sesion, carrilInicial }: { sesion: ResumenSesion
   const [carril, setCarril] = useState<number | null>(
     carrilInicial ?? (carriles.find((c) => c.tramos > 0) ?? carriles[0])?.carril ?? null,
   )
-  const [resultados, setResultados] = useState<ResultadosSesion | null>(null)
-  const [problema, setProblema] = useState<string | null>(null)
+  const [carga, setCarga] = useState<{ id: string; resultados: ResultadosSesion | null; problema: string | null; ahora: number } | null>(null)
+  const resultados = carga?.id === sesion.id ? carga.resultados : null
+  const problema = carga?.id === sesion.id ? carga.problema : null
+  const ahora = carga?.id === sesion.id ? carga.ahora : 0
 
   useEffect(() => {
     let vigente = true
-    setResultados(null)
-    setProblema(null)
     api
       .resultadosSesion(sesion.id)
-      .then((r) => vigente && setResultados(r))
-      .catch((e) => vigente && setProblema(e instanceof ErrorApi ? e.message : 'No se pudieron cargar los resultados.'))
+      .then((r) => {
+        if (vigente) setCarga({ id: sesion.id, resultados: r, problema: null, ahora: Date.now() })
+      })
+      .catch((e) => {
+        if (vigente) setCarga({ id: sesion.id, resultados: null, problema: e instanceof ErrorApi ? e.message : 'No se pudieron cargar los resultados.', ahora: Date.now() })
+      })
     return () => {
       vigente = false
     }
@@ -53,9 +57,9 @@ export function DetalleSesion({ sesion, carrilInicial }: { sesion: ResumenSesion
     const tramos = resultados.tramos.filter((t) => t.carril === carril)
     const eventos = resultados.eventos.filter((e) => e.carril === carril)
     const largos = resultados.largos.filter((l) => l.carril === carril)
-    const fin = sesion.fin ? Date.parse(sesion.fin) : Date.now()
+    const fin = sesion.fin ? Date.parse(sesion.fin) : ahora
     return { tramos, eventos, largos, metricas: calcularMetricas(largos, tramos, eventos, resultados.largo_m, fin) }
-  }, [resultados, carril, sesion.fin])
+  }, [resultados, carril, sesion.fin, ahora])
 
   function descargar() {
     if (!datos || !resultados || carril === null) return
@@ -81,7 +85,7 @@ export function DetalleSesion({ sesion, carrilInicial }: { sesion: ResumenSesion
         accion={
           <div className="flex flex-wrap items-center gap-2">
             {carriles.length > 1 && (
-              <select value={carril ?? ''} onChange={(e) => setCarril(Number(e.target.value))} className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-sm" aria-label="Carril">
+              <select value={carril ?? ''} onChange={(e) => { setCarril(Number(e.target.value)); setCarga((previo) => previo ? { ...previo, ahora: Date.now() } : previo) }} className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-sm" aria-label="Carril">
                 {carriles.map((c) => (
                   <option key={c.carril} value={c.carril}>Carril {c.carril} · {c.nadador ?? 'sin nadador'}</option>
                 ))}

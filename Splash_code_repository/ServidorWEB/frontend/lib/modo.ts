@@ -10,6 +10,7 @@
 //   NEXT_PUBLIC_STREAM_URL  dirección de servidor_stream.py (por defecto ws://<la misma máquina de la web>:8765)
 //   NEXT_PUBLIC_MODELO_URL  el modelo ONNX (por defecto /modelo/best_640.onnx, en public/ de la web)
 import type { ModoProceso } from './tipos'
+import { eliminar, guardarTexto, leerTexto } from '@/infrastructure/storage/almacenamiento-local'
 
 export function puedeProcesarAqui(): boolean {
   return typeof window !== 'undefined' && typeof WebAssembly === 'object' && typeof WebSocket === 'function' && typeof createImageBitmap === 'function'
@@ -33,18 +34,11 @@ export function urlModelo(): string {
 const CLAVE = 'safesplash:procesa-sesion'
 
 export function marcarQueProcesoAqui(sesionId: string | null): void {
-  try {
-    if (sesionId) window.localStorage.setItem(CLAVE, sesionId)
-    else window.localStorage.removeItem(CLAVE)
-  } catch {
-    // sin almacenamiento (modo privado): solo se pierde la reanudación al recargar
-  }
+  // sin almacenamiento (modo privado): solo se pierde la reanudación al recargar
+  if (sesionId) guardarTexto(CLAVE, sesionId)
+  else eliminar(CLAVE)
 }
 
 export function procesoAqui(sesionId: string): boolean {
-  try {
-    return window.localStorage.getItem(CLAVE) === sesionId
-  } catch {
-    return false
-  }
+  return leerTexto(CLAVE) === sesionId
 }

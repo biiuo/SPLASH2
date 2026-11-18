@@ -29,15 +29,16 @@ const diaCorto = (t: number) => new Date(t).toLocaleDateString('es-CO', { day: '
 export default function MiProgreso() {
   const { filas, problema } = useMisSesiones()
   const [periodo, setPeriodo] = useState<Periodo>('30')
-  const [desde, setDesde] = useState(aDia(new Date(Date.now() - 30 * DIA)))
-  const [hasta, setHasta] = useState(aDia(new Date()))
+  const [desde, setDesde] = useState(() => aDia(new Date(Date.now() - 30 * DIA)))
+  const [hasta, setHasta] = useState(() => aDia(new Date()))
+  const [ahora, setAhora] = useState(() => Date.now())
 
   const rango = useMemo((): [number, number] => {
-    if (periodo !== 'personalizado') return [inicioDelDia(Date.now() - (Number(periodo) - 1) * DIA), Date.now()]
+    if (periodo !== 'personalizado') return [inicioDelDia(ahora - (Number(periodo) - 1) * DIA), ahora]
     const a = Date.parse(`${desde}T00:00:00`)
     const b = Date.parse(`${hasta}T23:59:59`)
-    return [Number.isFinite(a) ? a : 0, Number.isFinite(b) ? b : Date.now()]
-  }, [periodo, desde, hasta])
+    return [Number.isFinite(a) ? a : 0, Number.isFinite(b) ? b : ahora]
+  }, [periodo, desde, hasta, ahora])
 
   // en orden de fecha; las en curso no cuentan (sus métricas son parciales)
   const enRango = useMemo(
@@ -94,15 +95,15 @@ export default function MiProgreso() {
                 ['personalizado', 'Personalizado'],
               ] as [Periodo, string][]
             ).map(([v, texto]) => (
-              <button key={v} onClick={() => setPeriodo(v)} aria-pressed={periodo === v} className={periodo === v ? BOTON.primario : BOTON.terciario}>
+              <button key={v} onClick={() => { if (v !== periodo) setAhora(Date.now()); setPeriodo(v) }} aria-pressed={periodo === v} className={periodo === v ? BOTON.primario : BOTON.terciario}>
                 {texto}
               </button>
             ))}
           </div>
           {periodo === 'personalizado' && (
             <div className="flex flex-wrap gap-3">
-              <label className="text-sm text-[#64748B]">Desde<input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} className={CAMPO} /></label>
-              <label className="text-sm text-[#64748B]">Hasta<input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} className={CAMPO} /></label>
+              <label className="text-sm text-[#64748B]">Desde<input type="date" value={desde} max={hasta} onChange={(e) => { setAhora(Date.now()); setDesde(e.target.value) }} className={CAMPO} /></label>
+              <label className="text-sm text-[#64748B]">Hasta<input type="date" value={hasta} min={desde} onChange={(e) => { setAhora(Date.now()); setHasta(e.target.value) }} className={CAMPO} /></label>
             </div>
           )}
         </div>
@@ -110,7 +111,7 @@ export default function MiProgreso() {
 
       {problema && <div className="mt-6"><Aviso tipo="error">{problema}</Aviso></div>}
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi icono={Waves} etiqueta="Distancia total" valor={filas ? Math.round(t.distancia_m).toLocaleString('es-CO') : '…'} unidad="m" />
         <Kpi icono={Gauge} etiqueta="Velocidad promedio" valor={t.velocidad_media_ms ? t.velocidad_media_ms.toFixed(2) : filas ? '—' : '…'} unidad="m/s" />
         <Kpi icono={TrendingUp} etiqueta="Mejor velocidad" valor={t.velocidad_max_ms ? t.velocidad_max_ms.toFixed(2) : filas ? '—' : '…'} unidad="m/s" nota="mejor largo detectado" />

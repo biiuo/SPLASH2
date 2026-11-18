@@ -1,7 +1,7 @@
 'use client'
 
 import { Gauge, Timer, TrendingUp, Waves } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { carrilesDe, desdePeriodo, metricas, useDatosEntrenador } from '@/components/entrenador/datos'
 import { Barras, Linea } from '@/components/graficos'
@@ -9,6 +9,7 @@ import { DetalleSesion } from '@/components/nadador/detalle-sesion'
 import { Encabezado } from '@/components/nadador/shell'
 import { Aviso, BOTON, CAMPO, Kpi, Tarjeta } from '@/components/nadador/ui'
 import { fechaCorta, formatearMetros, formatearSegundos, formatearVel, horaCorta } from '@/lib/largos'
+import { useParametroUrl } from '@/shared/hooks/use-parametro-url'
 
 const DIA = 24 * 60 * 60 * 1000
 const diaCorto = (t: number) => new Date(t).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
@@ -22,22 +23,12 @@ const PERIODOS: [string, string][] = [['30', '30 días'], ['90', '3 meses'], ['3
 /** Análisis de rendimiento de un nadador: evolución, distancia, tiempos por largo y comparación entre períodos. */
 export default function Rendimiento() {
   const { datos, problema } = useDatosEntrenador()
-  const [nadadorId, setNadadorId] = useState('')
+  const nadadorUrl = useParametroUrl('nadador')
+  const [nadadorElegido, setNadadorId] = useState<string | null>(null)
   const [periodo, setPeriodo] = useState('90')
   const [sesionId, setSesionId] = useState('')
 
-  useEffect(() => {
-    try {
-      const n = new URLSearchParams(window.location.search).get('nadador')
-      if (n) setNadadorId(n)
-    } catch {
-      /* sin URL */
-    }
-  }, [])
-  useEffect(() => {
-    if (!nadadorId && datos?.nadadores[0]) setNadadorId(datos.nadadores[0].id)
-  }, [datos, nadadorId])
-
+  const nadadorId = nadadorElegido ?? (nadadorUrl || datos?.nadadores[0]?.id || '')
   const nadador = datos?.nadadores.find((n) => n.id === nadadorId) ?? null
   const todas = useMemo(() => (nadador && datos ? carrilesDe(nadador.usuario_id, datos.sesiones).filter((f) => f.sesion.estado !== 'cancelada') : []), [nadador, datos])
   const desde = desdePeriodo(periodo)
@@ -46,14 +37,12 @@ export default function Rendimiento() {
   // el período anterior, del mismo largo, para comparar
   const largo = periodo === 'todo' ? 0 : Number(periodo) * DIA
   const anterior = largo ? metricas(todas.filter((f) => Date.parse(f.sesion.inicio) >= desde - largo && Date.parse(f.sesion.inicio) < desde)) : null
-  const semanas = useMemo(() => {
-    const mapa = new Map<number, number>()
-    for (const f of filas) {
-      const k = semanaDe(Date.parse(f.sesion.inicio))
-      mapa.set(k, (mapa.get(k) ?? 0) + f.carril.distancia_m)
-    }
-    return [...mapa.entries()].sort((a, b) => a[0] - b[0])
-  }, [filas])
+  const mapaSemanas = new Map<number, number>()
+  for (const f of filas) {
+    const k = semanaDe(Date.parse(f.sesion.inicio))
+    mapaSemanas.set(k, (mapaSemanas.get(k) ?? 0) + f.carril.distancia_m)
+  }
+  const semanas = [...mapaSemanas.entries()].sort((a, b) => a[0] - b[0])
   const conVel = filas.filter((f) => f.carril.velocidad_media_ms !== null)
   const conLargos = [...filas].reverse().filter((f) => f.carril.largos > 0)
   const elegida = conLargos.find((f) => f.sesion.id === sesionId) ?? conLargos[0] ?? null
@@ -85,7 +74,7 @@ export default function Rendimiento() {
 
       {nadador && (
         <>
-          <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi icono={Waves} etiqueta="Distancia total" valor={Math.round(m.distancia_m).toLocaleString('es-CO')} unidad="m" nota={`${m.sesiones} sesiones`} />
             <Kpi icono={Gauge} etiqueta="Velocidad promedio" valor={m.velocidad_media_ms ? m.velocidad_media_ms.toFixed(2) : '—'} unidad="m/s" />
             <Kpi icono={TrendingUp} etiqueta="Velocidad máxima" valor={m.velocidad_max_ms ? m.velocidad_max_ms.toFixed(2) : '—'} unidad="m/s" nota="largo detectado" />

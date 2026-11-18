@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { BOTON_HERO, CifraHero, HeroPanel } from '@/components/hero-panel'
 import { TablaSesiones } from '@/components/nadador/tabla-sesiones'
 import { Aviso, BOTON, EstadoSesion, Kpi, Tarjeta, useMisSesiones } from '@/components/nadador/ui'
-import { SesionPanel } from '@/components/sesion-panel'
+import { SesionPanel } from '@/features/sesion'
 import { useCuenta } from '@/lib/cuenta'
 import { fechaCorta, formatearMetros, formatearVel, horaCorta, totales } from '@/lib/largos'
 import { formatearDuracion } from '@/lib/resultados'
@@ -41,7 +41,7 @@ export default function MiResumen() {
 
       {problema && <div className="mt-6"><Aviso tipo="error">{problema}</Aviso></div>}
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi icono={Activity} etiqueta="Sesiones realizadas" valor={t ? String(t.sesiones) : '…'} nota="finalizadas" />
         <Kpi icono={Waves} etiqueta="Distancia recorrida" valor={t ? Math.round(t.distancia_m).toLocaleString('es-CO') : '…'} unidad="m" />
         <Kpi icono={Gauge} etiqueta="Velocidad promedio" valor={t?.velocidad_media_ms ? t.velocidad_media_ms.toFixed(2) : t ? '—' : '…'} unidad="m/s" />

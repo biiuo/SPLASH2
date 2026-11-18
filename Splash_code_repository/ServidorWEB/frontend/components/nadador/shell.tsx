@@ -3,7 +3,7 @@
 import { ChartNoAxesCombined, History, LayoutDashboard, LogOut, Menu, UserRound, Waves, X, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { useCuenta } from '@/lib/cuenta'
 
@@ -33,9 +33,22 @@ export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[
   const router = useRouter()
   const cuenta = useCuenta()
   const [abierto, setAbierto] = useState(false)
+  const botonMenu = useRef<HTMLButtonElement>(null)
+  const idMenu = useId()
   const inicio = opciones[0]?.href ?? '/'
   const activa = (href: string) => (href === inicio ? ruta === href : ruta.startsWith(href))
   const tema = rol === 'Nadador' ? 'nadador' : rol === 'Entrenador' ? 'entrenador' : 'administrador'
+
+  useEffect(() => {
+    if (!abierto) return
+    function cerrarConEscape(evento: KeyboardEvent) {
+      if (evento.key !== 'Escape') return
+      setAbierto(false)
+      botonMenu.current?.focus()
+    }
+    window.addEventListener('keydown', cerrarConEscape)
+    return () => window.removeEventListener('keydown', cerrarConEscape)
+  }, [abierto])
 
   async function salir() {
     await cuenta.salir()
@@ -43,7 +56,7 @@ export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[
   }
 
   const logo = (
-    <Link href={inicio} className="flex items-center gap-2.5">
+    <Link href="/" aria-label="SafeSplash, volver al inicio" className="flex items-center gap-2.5">
       <span className="flex size-9 items-center justify-center rounded-xl bg-[#1D63ED] text-white shadow-lg shadow-[#1D63ED]/40"><Waves className="size-5" /></span>
       <span className="font-bold text-white">Safe<span className="text-[#7DD3FC]">Splash</span></span>
     </Link>
@@ -104,16 +117,18 @@ export function ShellModulo({ opciones, rol, children }: { opciones: OpcionMenu[
       {/* celular / tablet: barra arriba con el menú desplegable */}
       <header className="sticky top-0 z-20 flex items-center justify-between bg-[var(--marino-1)] px-4 py-3 lg:hidden">
         {logo}
-        <button onClick={() => setAbierto(!abierto)} className="rounded-lg p-2 text-sky-100 hover:bg-white/10" aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto}>
+        <button ref={botonMenu} onClick={() => setAbierto(!abierto)} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sky-100 hover:bg-white/10" aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto} aria-controls={idMenu}>
           {abierto ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
       </header>
-      {abierto && (
+      <div id={idMenu} hidden={!abierto}>
+        {abierto && (
         <div className="sticky top-[60px] z-20 flex flex-col gap-3 bg-[var(--marino-2)] p-4 shadow-xl lg:hidden">
           {menu}
           {pie}
         </div>
-      )}
+        )}
+      </div>
 
       <main className="lg:pl-[220px]">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">{children}</div>

@@ -7,40 +7,40 @@ import { conErrores } from '@/components/admin/comun'
 import { carrilesDe, metricas, useDatosEntrenador } from '@/components/entrenador/datos'
 import { BOTON_HERO, CifraHero, HeroPanel } from '@/components/hero-panel'
 import { Aviso, BOTON, EstadoSesion, Kpi, Tarjeta } from '@/components/nadador/ui'
-import { SesionPanel } from '@/components/sesion-panel'
+import { SesionPanel } from '@/features/sesion'
 import { useCuenta } from '@/lib/cuenta'
 import { fechaCorta, formatearMetros, formatearVel, horaCorta } from '@/lib/largos'
 import { cumplimiento, NOMBRE_TIPO } from '@/lib/objetivos'
 
 const DIA = 24 * 60 * 60 * 1000
-const hoy = () => new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+const hoy = (ahora: number) => new Date(ahora).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
 /** Dashboard del entrenador: su grupo de un vistazo, alertas y las últimas sesiones. */
 export default function DashboardEntrenador() {
   const { usuario } = useCuenta()
-  const { datos, problema } = useDatosEntrenador()
-  const inicioHoy = new Date().setHours(0, 0, 0, 0)
+  const { datos, problema, actualizado } = useDatosEntrenador()
+  const inicioHoy = new Date(actualizado).setHours(0, 0, 0, 0)
   const sesiones = datos?.sesiones ?? []
   const deHoy = sesiones.filter((s) => Date.parse(s.inicio) >= inicioHoy)
-  const semana = sesiones.filter((s) => Date.parse(s.inicio) >= Date.now() - 7 * DIA && s.estado !== 'cancelada')
+  const semana = sesiones.filter((s) => Date.parse(s.inicio) >= actualizado - 7 * DIA && s.estado !== 'cancelada')
   const rendimiento = metricas(semana.flatMap((s) => s.por_carril.map((c) => ({ sesion: s, carril: c }))))
 
   // alertas: lo que el entrenador debería mirar hoy
   const alertas: { texto: string; href?: string }[] = []
   if (datos) {
-    for (const s of sesiones.filter((x) => Date.parse(x.inicio) >= Date.now() - 14 * DIA && conErrores(x)).slice(0, 5)) {
+    for (const s of sesiones.filter((x) => Date.parse(x.inicio) >= actualizado - 14 * DIA && conErrores(x)).slice(0, 5)) {
       alertas.push({ texto: `Sesión del ${fechaCorta(s.inicio)} con errores de detección (sin datos o con más de la mitad estimado).`, href: `/entrenador/historial/${s.id}` })
     }
     for (const s of sesiones.filter((x) => x.estado === 'activa')) {
-      if (Date.now() - Date.parse(s.inicio) > 2 * 60000 && s.tramos === 0) alertas.push({ texto: `La sesión en curso de las ${horaCorta(s.inicio)} todavía no tiene datos.`, href: '/entrenador/monitoreo' })
+      if (actualizado - Date.parse(s.inicio) > 2 * 60000 && s.tramos === 0) alertas.push({ texto: `La sesión en curso de las ${horaCorta(s.inicio)} todavía no tiene datos.`, href: '/entrenador/monitoreo' })
     }
     for (const n of datos.nadadores) {
       const ultima = metricas(carrilesDe(n.usuario_id, sesiones)).ultima
-      if (!ultima || Date.parse(ultima) < Date.now() - 14 * DIA) alertas.push({ texto: `${n.nombre} no entrena con vos hace más de 14 días.`, href: `/entrenador/nadadores/${n.id}` })
+      if (!ultima || Date.parse(ultima) < actualizado - 14 * DIA) alertas.push({ texto: `${n.nombre} no entrena con vos hace más de 14 días.`, href: `/entrenador/nadadores/${n.id}` })
     }
     for (const o of datos.objetivos) {
       const c = cumplimiento(o, sesiones)
-      const faltan = (Date.parse(`${o.hasta}T23:59:59`) - Date.now()) / DIA
+      const faltan = (Date.parse(`${o.hasta}T23:59:59`) - actualizado) / DIA
       if (c.estado === 'en_curso' && faltan <= 7) alertas.push({ texto: `${o.nadador}: ${NOMBRE_TIPO[o.tipo].toLowerCase()} al ${c.porcentaje} %, vence en ${Math.max(0, Math.ceil(faltan))} días.`, href: '/entrenador/objetivos' })
     }
   }
@@ -49,7 +49,7 @@ export default function DashboardEntrenador() {
     <>
       <HeroPanel
         foto={2}
-        etiqueta={hoy()}
+        etiqueta={hoy(actualizado)}
         titulo={`Hola, ${usuario?.nombre.split(' ')[0] ?? ''}.`}
         resaltado="Tu equipo, en el agua."
         bajada="El resumen de tus grupos y tus entrenamientos."
@@ -63,7 +63,7 @@ export default function DashboardEntrenador() {
       />
       {problema && <div className="mb-6"><Aviso tipo="error">{problema}</Aviso></div>}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi icono={Users} etiqueta="Nadadores asignados" valor={datos ? String(datos.nadadores.length) : '…'} nota="en tus grupos, sin repetir" />
         <Kpi icono={Activity} etiqueta="Sesiones de hoy" valor={datos ? String(deHoy.length) : '…'} />
         <Kpi icono={PlayCircle} etiqueta="Sesiones activas" valor={datos ? String(sesiones.filter((s) => s.estado === 'activa').length) : '…'} />
