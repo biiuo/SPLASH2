@@ -29,6 +29,7 @@ export function SafeSplashApp() {
   const cuenta = useCuenta()
   const ingresar = useParametroUrl('ingresar')
   const [vistaElegida, setView] = useState<'home' | 'login' | 'signup' | 'panel' | null>(null)
+  const [destinoPanel, setDestinoPanel] = useState<string | null>(null)
 
   // /?ingresar (por ejemplo, al entrar a una página que pide sesión) abre directamente el ingreso
   const vistaSolicitada = vistaElegida ?? (ingresar !== null ? 'login' : 'home')
@@ -42,11 +43,19 @@ export function SafeSplashApp() {
         : vistaSolicitada
 
   if (view === 'login' || view === 'signup') {
-    return <AuthScreen mode={view} onBack={() => setView('home')} onSignup={() => setView('signup')} onLogin={() => setView('login')} />
+    return (
+      <AuthScreen
+        mode={view}
+        onBack={() => setView('home')}
+        onSignup={() => setView('signup')}
+        onLogin={() => setView('login')}
+        onRegistered={() => setDestinoPanel('/nadador/bienvenida')}
+      />
+    )
   }
 
   // cada rol con su módulo: /nadador, /entrenador y /admin, cada uno con su menú lateral
-  if (view === 'panel' && cuenta.usuario?.rol === 'nadador') return <IrAlModulo a="/nadador" />
+  if (view === 'panel' && cuenta.usuario?.rol === 'nadador') return <IrAlModulo a={destinoPanel ?? '/nadador'} />
   if (view === 'panel' && cuenta.usuario?.rol === 'administrador') return <IrAlModulo a="/admin" />
   if (view === 'panel' && cuenta.usuario?.rol === 'entrenador') return <IrAlModulo a="/entrenador" />
 

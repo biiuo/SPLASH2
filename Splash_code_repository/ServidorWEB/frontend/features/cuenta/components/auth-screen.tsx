@@ -22,9 +22,10 @@ interface AuthScreenProps {
   onBack: () => void
   onSignup: () => void
   onLogin: () => void
+  onRegistered: () => void
 }
 
-export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps) {
+export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: AuthScreenProps) {
   const isLogin = mode === 'login'
   const cuenta = useCuenta()
 
@@ -84,6 +85,9 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin }: AuthScreenProps)
           setSolicitudEnviada(true)
           setContrasena('')
           setConfirmarContrasena('')
+        } else {
+          onRegistered()
+          cuenta.actualizado(r.usuario)
         }
       }
     } catch (err) {
