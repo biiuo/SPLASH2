@@ -10,7 +10,9 @@ unos segundos DESPUÉS de la última.
     del clip (se avisa), no se frena la inferencia.
   * El clip lleva lo mismo que ve la ventana de depuración: cajas con el id de cada nadador, las zonas y la hora de
     captura del frame, para poder cruzarlo con el CSV de posiciones enviadas.
-  * Se guarda lo que el modelo procesó, a los fps a los que procesó: el video se ve a velocidad real.
+  * El clip se escribe a un ritmo FIJO (`fps_salida`, 10 por defecto) ubicando cada frame procesado por su hora de
+    captura: si el modelo va más rápido se saltan frames, si va más lento se repiten. Así el clip siempre se ve a
+    velocidad real, aunque el ritmo de procesamiento cambie.
   * Un tope de disco (`max_gb`) borra los clips más viejos.
 
 Solo usa OpenCV y la biblioteca estándar.
@@ -18,7 +20,6 @@ Solo usa OpenCV y la biblioteca estándar.
 import collections
 import datetime as dt
 import queue
-import statistics
 import threading
 import time
 from pathlib import Path
@@ -35,7 +36,7 @@ def hora_de(t_cap):
 
 class GrabadorActividad(threading.Thread):
     def __init__(self, carpeta, dibujar, pre_s=3.0, post_s=10.0, max_clip_s=600.0, max_gb=5.0, max_pre_frames=60,
-                 cola_max=120, log=print):
+                 cola_max=120, fps_salida=10.0, log=print):
         """dibujar(frame, estables, texto, zonas) -> imagen anotada (la misma que usa la ventana de depuración)."""
         super().__init__(daemon=True, name="grabador")
         self.carpeta = Path(carpeta)
@@ -52,6 +53,8 @@ class GrabadorActividad(threading.Thread):
         self._t_actividad = 0.0     # t_cap de la última vez que hubo un nadador
         self._visto = 0.0           # hora real de la última vez que llegó un frame (para cerrar si el stream se calla)
         self._n = 0
+        self.fps_salida = fps_salida
+        self._t_sig = 0.0          # t_cap que le toca al próximo frame del clip
         self.clips = 0
         self.descartados = 0
         self.frames_escritos = 0
@@ -113,31 +116,31 @@ class GrabadorActividad(threading.Thread):
         if t_cap - self._t_actividad > self.post_s or t_cap - self._t_clip > self.max_clip_s:
             self._cerrar_clip()
 
-    def _fps(self):
-        ts = [x[0] for x in self._previo]
-        if len(ts) >= 3:
-            d = statistics.median(b - a for a, b in zip(ts, ts[1:]) if b > a) if any(b > a for a, b in zip(ts, ts[1:])) else 0
-            if d > 0:
-                return max(1.0, min(30.0, 1.0 / d))
-        return 10.0
-
     def _abrir_clip(self, w, h):
         base = self._previo[0][0] if self._previo else time.time()
         marca = (dt.datetime.fromtimestamp(base) if base > 1e9 else dt.datetime.now()).strftime("%Y%m%d_%H%M%S")
         self._ruta = self.carpeta / f"clip_{marca}.mp4"
-        self._writer = cv2.VideoWriter(str(self._ruta), cv2.VideoWriter_fourcc(*"mp4v"), self._fps(), (w, h))
+        self._writer = cv2.VideoWriter(str(self._ruta), cv2.VideoWriter_fourcc(*"mp4v"), self.fps_salida, (w, h))
         if not self._writer.isOpened():
             self._writer = None
             raise RuntimeError(f"no pude abrir {self._ruta} para grabar")
         self._tam, self._n = (w, h), 0
         self._t_clip = self._previo[0][0] if self._previo else 0.0
-        self.log(f"[grabador] empieza {self._ruta.name} ({self._fps():.1f} fps)")
+        self._t_sig = self._t_clip
+        self.log(f"[grabador] empieza {self._ruta.name} ({self.fps_salida:g} fps)")
 
     def _escribir(self, t_cap, frame, estables, zonas):
-        texto = f"{hora_de(t_cap)} | nadadores: {len(estables)}"
-        self._writer.write(self.dibujar(frame, estables, texto, zonas))
-        self._n += 1
-        self.frames_escritos += 1
+        """Ubica el frame por su hora de captura en el ritmo fijo del clip: se salta o se repite según haga falta."""
+        if t_cap < self._t_sig - 1e-6:
+            return                                     # el modelo va más rápido que fps_salida
+        if t_cap - self._t_sig > 2.0:
+            self._t_sig = t_cap                        # hueco largo (stream cortado): no rellenar con el frame repetido
+        img = self.dibujar(frame, estables, f"{hora_de(t_cap)} | nadadores: {len(estables)}", zonas)
+        while self._t_sig <= t_cap + 1e-6:             # el modelo va más lento: se repite para mantener la velocidad real
+            self._writer.write(img)
+            self._t_sig += 1.0 / self.fps_salida
+            self._n += 1
+            self.frames_escritos += 1
 
     def _cerrar_clip(self):
         if self._writer is None:

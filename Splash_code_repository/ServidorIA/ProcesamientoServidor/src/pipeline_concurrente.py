@@ -399,12 +399,18 @@ def main():
     ap.add_argument("--video-pre-s", type=float, default=3.0, help="segundos de video ANTES de la primera detección")
     ap.add_argument("--video-post-s", type=float, default=10.0, help="segundos que se sigue grabando tras la última detección")
     ap.add_argument("--video-max-min", type=float, default=10.0, help="duración máxima de un clip (minutos); luego abre otro")
+    ap.add_argument("--video-fps", type=float, default=10.0, help="fps de los clips (se ven a velocidad real con cualquier valor)")
     ap.add_argument("--video-max-gb", type=float, default=5.0, help="tope de disco de los clips: borra los más viejos")
     ap.add_argument("--registro-csv", metavar="ARCHIVO", default=os.environ.get("REGISTRO_CSV") or None,
                     help="guarda en un CSV cada posición que se manda al backend (para depurar)")
     ap.add_argument("--hz-envio", type=float, default=3.0, help="posiciones por segundo y por nadador que se envían")
     ap.add_argument("--extrapolar-max-s", type=float, default=1.5,
                     help="segundos que se extrapola la posición de un nadador perdido antes de mantener la última")
+    ap.add_argument("--salto-max-px-s", type=float, default=120.0,
+                    help="filtro de saltos: velocidad máxima creíble en la imagen (px/s); 0 = sin filtro")
+    ap.add_argument("--salto-margen-px", type=float, default=60.0, help="filtro de saltos: tolerancia fija (px)")
+    ap.add_argument("--salto-confirmar-s", type=float, default=1.5,
+                    help="filtro de saltos: segundos que una posición lejana debe mantenerse para aceptarla")
     args = ap.parse_args()
 
     fuente = int(args.source) if str(args.source).isdigit() else args.source
@@ -443,7 +449,7 @@ def main():
 
     # envío al backend: posiciones en píxeles a un ritmo fijo; lo medido y lo estimado van marcados.
     # --registro-csv también las anota en un archivo (con o sin backend).
-    enviador, al_resultado, registro = None, None, None
+    enviador, al_resultado, registro, trayectorias = None, None, None, None
     if args.registro_csv:
         registro = RegistroCSV(args.registro_csv)
         print(f"Registro CSV de las posiciones enviadas: {args.registro_csv}")
@@ -454,7 +460,8 @@ def main():
         enviador = EnviadorBackend(args.backend_url, args.sesion, al_unirse=al_unirse,
                                    token=os.environ.get("IA_TOKEN") or None)
     if enviador or registro:
-        trayectorias = Trayectorias(args.hz_envio, args.extrapolar_max_s, args.max_hueco)
+        trayectorias = Trayectorias(args.hz_envio, args.extrapolar_max_s, args.max_hueco,
+                                    args.salto_max_px_s, args.salto_margen_px, args.salto_confirmar_s)
         # cámara: t_cap ya es la hora real; archivo: t_cap es el tiempo del video y se suma a la hora de arranque
         base_ms = time.time() * 1000 if es_archivo else 0.0
 
@@ -473,7 +480,8 @@ def main():
     grabador = None
     if args.guardar_video:
         grabador = GrabadorActividad(args.guardar_video, dibujar, pre_s=args.video_pre_s, post_s=args.video_post_s,
-                                     max_clip_s=args.video_max_min * 60, max_gb=args.video_max_gb)
+                                     max_clip_s=args.video_max_min * 60, max_gb=args.video_max_gb,
+                                     fps_salida=args.video_fps)
         grabador.start()
         print(f"Grabando clips solo con nadadores en: {args.guardar_video} "
               f"({args.video_pre_s:g} s antes, {args.video_post_s:g} s después, tope {args.video_max_gb:g} GB)")
@@ -598,6 +606,9 @@ def main():
     print(f"  IDs de ByteTrack      {len(inferencia.ids_bytetrack)}")
     print(f"  identidades estables  {len(gestor.estados)}")
     print(f"  re-enlaces / duplicados descartados: {gestor.reenlaces} / {gestor.duplicados}")
+    if trayectorias:
+        print(f"  filtro de saltos: {trayectorias.saltos_descartados} detecciones descartadas, "
+              f"{trayectorias.saltos_confirmados} saltos confirmados")
     if enviador:
         print(f"  enviadas al backend   {enviador.enviadas} en {enviador.lotes} lotes "
               f"(eventos {enviador.eventos}, tramos {enviador.tramos}); sin enviar: {enviador.pendientes}; "
