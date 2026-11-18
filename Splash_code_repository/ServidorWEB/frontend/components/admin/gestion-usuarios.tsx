@@ -52,9 +52,6 @@ export function GestionUsuarios({
     }
   }, [texto, rol, filtroRol, activo, pagina])
 
-  // un filtro nuevo vuelve a la primera página
-  useEffect(() => setPagina(1), [texto, filtroRol, activo])
-
   // la búsqueda espera a que se deje de escribir
   useEffect(() => {
     const t = setTimeout(() => void cargar(), 250)
@@ -123,15 +120,15 @@ export function GestionUsuarios({
       <div className="mb-4 flex flex-wrap gap-3">
         <label className="flex min-w-[16rem] flex-1 items-center gap-2 rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 focus-within:border-[#2563EB]">
           <Search className="size-4 text-[#94A3B8]" />
-          <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por correo o nombre" className="flex-1 text-sm outline-none" aria-label="Buscar usuario" />
+          <input value={texto} onChange={(e) => { setTexto(e.target.value); setPagina(1) }} placeholder="Buscar por correo o nombre" className="flex-1 text-sm outline-none" aria-label="Buscar usuario" />
         </label>
         {!rol && (
-          <select value={filtroRol} onChange={(e) => setFiltroRol(e.target.value as Rol | '')} className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-sm" aria-label="Filtrar por rol">
+          <select value={filtroRol} onChange={(e) => { setFiltroRol(e.target.value as Rol | ''); setPagina(1) }} className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-sm" aria-label="Filtrar por rol">
             <option value="">Todos los roles</option>
             {ROLES.map((r) => <option key={r} value={r}>{NOMBRE_ROL[r]}</option>)}
           </select>
         )}
-        <select value={activo} onChange={(e) => setActivo(e.target.value as '' | 'true' | 'false')} className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-sm" aria-label="Filtrar por estado">
+        <select value={activo} onChange={(e) => { setActivo(e.target.value as '' | 'true' | 'false'); setPagina(1) }} className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-sm" aria-label="Filtrar por estado">
           <option value="">Activas e inactivas</option>
           <option value="true">Solo activas</option>
           <option value="false">Solo desactivadas</option>

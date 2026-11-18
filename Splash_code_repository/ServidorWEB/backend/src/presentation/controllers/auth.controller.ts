@@ -40,17 +40,18 @@ export class AuthController {
   @ApiOperation({
     summary: 'Crear una cuenta',
     description:
-      '`rol` es `nadador` o `entrenador` (un administrador no se puede registrar solo). Devuelve el token: la cuenta ' +
-      'queda con la sesión iniciada. Mandalo en las demás rutas como `Authorization: Bearer <token>` (botón Authorize).',
+      '`rol` opcional es `nadador` o `entrenador` (por defecto, nadador; un administrador no se puede registrar solo). El nadador recibe el token: la ' +
+      'cuenta queda con la sesión iniciada. Mandalo en las demás rutas como `Authorization: Bearer <token>` (botón ' +
+      'Authorize). El entrenador queda pendiente hasta que un administrador lo apruebe: recibe `{ pendiente: true, usuario }`, sin token.',
   })
   @ApiBody({
     schema: { type: 'object' },
     examples: {
-      entrenador: { summary: 'Entrenador', value: { email: 'entrenador@ejemplo.com', nombre: 'Ana Entrenadora', contrasena: 'clave-segura-1', rol: 'entrenador' } },
       nadador: { summary: 'Nadador', value: { email: 'nadador@ejemplo.com', nombre: 'Juan Nadador', contrasena: 'clave-segura-2', rol: 'nadador' } },
+      entrenador: { summary: 'Entrenador pendiente', value: { email: 'entrenador@ejemplo.com', nombre: 'Ana Entrenadora', contrasena: 'clave-segura-1', rol: 'entrenador' } },
     },
   })
-  @ApiCreatedResponse({ description: '`{ token, usuario: { id, email, nombre, rol, activo } }`' })
+  @ApiCreatedResponse({ description: 'Nadador: `{ token, usuario }`. Entrenador: `{ pendiente: true, usuario }`.' })
   @ApiConflictResponse({ description: 'Ya hay una cuenta con ese correo.' })
   registro(@Body() cuerpo: RegistroEntrada) {
     return this.registrarse.execute(cuerpo)

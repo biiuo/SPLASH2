@@ -29,15 +29,19 @@ export function Reportes({ bajada }: { bajada: string }) {
   const [sesiones, setSesiones] = useState<ResumenSesion[] | null>(null)
   const [problema, setProblema] = useState<string | null>(null)
   const [periodo, setPeriodo] = useState<Periodo>('90')
+  const [ahora, setAhora] = useState(0)
 
   useEffect(() => {
-    api.sesionesRecientes(500).then(setSesiones).catch((e) => setProblema(e instanceof ErrorApi ? e.message : 'No se pudieron cargar las sesiones.'))
+    api.sesionesRecientes(500).then((resultado) => {
+      setAhora(Date.now())
+      setSesiones(resultado)
+    }).catch((e) => setProblema(e instanceof ErrorApi ? e.message : 'No se pudieron cargar las sesiones.'))
   }, [])
 
   const enPeriodo = useMemo(() => {
-    const desde = periodo === 'todo' ? 0 : Date.now() - Number(periodo) * DIA
+    const desde = periodo === 'todo' ? 0 : ahora - Number(periodo) * DIA
     return (sesiones ?? []).filter((s) => s.estado !== 'cancelada' && Date.parse(s.inicio) >= desde)
-  }, [sesiones, periodo])
+  }, [sesiones, periodo, ahora])
 
   const carriles = enPeriodo.flatMap((s) => s.por_carril)
   const metros = carriles.reduce((a, c) => a + c.distancia_m, 0)
@@ -113,7 +117,7 @@ export function Reportes({ bajada }: { bajada: string }) {
       <Tarjeta>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Período">
           {([['30', 'Últimos 30 días'], ['90', 'Últimos 3 meses'], ['365', 'Último año'], ['todo', 'Todo']] as [Periodo, string][]).map(([v, t]) => (
-            <button key={v} onClick={() => setPeriodo(v)} aria-pressed={periodo === v} className={periodo === v ? BOTON.primario : BOTON.terciario}>{t}</button>
+            <button key={v} onClick={() => { setAhora(Date.now()); setPeriodo(v) }} aria-pressed={periodo === v} className={periodo === v ? BOTON.primario : BOTON.terciario}>{t}</button>
           ))}
         </div>
       </Tarjeta>

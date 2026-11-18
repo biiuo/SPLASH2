@@ -1,9 +1,12 @@
 import type { Rol, Usuario } from '../entities/usuario.entity'
 
-export type NuevoUsuario = { email: string; nombre: string; rol: Rol; passwordHash: string; telefono?: string | null }
+export type NuevoUsuario = { email: string; nombre: string; rol: Rol; passwordHash: string; telefono?: string | null; pendiente?: boolean }
 
-/** Filtro del listado del administrador: texto (correo o nombre), rol y estado. */
-export type FiltroUsuarios = { texto?: string; rol?: Rol; activo?: boolean; pagina?: number; porPagina?: number }
+/**
+ * Filtro del listado del administrador: texto (correo o nombre), rol y estado. `pendiente: true` lista solo los
+ * entrenadores que esperan aprobación; sin indicarlo, esos no aparecen.
+ */
+export type FiltroUsuarios = { texto?: string; rol?: Rol; activo?: boolean; pendiente?: boolean; pagina?: number; porPagina?: number }
 
 /** Una página de resultados y cuántos hay en total. */
 export type PaginaUsuarios = { usuarios: Usuario[]; total: number; pagina: number; por_pagina: number }
@@ -23,8 +26,14 @@ export interface UsuarioRepository {
   actualizar(id: string, cambios: CambiosUsuario): Promise<Usuario | null>
   /** Una página de las cuentas que cumplen el filtro, por nombre, y el total. */
   listar(filtro: FiltroUsuarios): Promise<PaginaUsuarios>
-  /** Cuántas cuentas activas hay de cada rol. */
+  /** Cuántas cuentas activas (y aprobadas) hay de cada rol. */
   contarPorRol(): Promise<Record<Rol, number>>
+  /** Cuántos entrenadores esperan la aprobación del administrador. */
+  contarPendientes(): Promise<number>
+  /** Aprueba una cuenta pendiente. null si no existe o no estaba pendiente. */
+  aprobar(id: string): Promise<Usuario | null>
+  /** Borra una cuenta SOLO si está pendiente (rechazo). false si no existe o no estaba pendiente. */
+  borrarPendiente(id: string): Promise<boolean>
   /** La contraseña cifrada, para comprobar la actual antes de cambiarla. null si no existe. */
   obtenerHash(id: string): Promise<string | null>
   cambiarHash(id: string, passwordHash: string): Promise<void>

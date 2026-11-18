@@ -24,16 +24,36 @@ export class AdminController {
   @Roles('administrador')
   @ApiOperation({
     summary: 'Buscar usuarios',
-    description: '`?texto=` busca en correo y nombre; `?rol=` y `?activo=true|false` filtran; `?pagina=` y `?por_pagina=` (10 por defecto, hasta 50). Devuelve `{ usuarios, total, pagina, por_pagina }`.',
+    description:
+      '`?texto=` busca en correo y nombre; `?rol=` y `?activo=true|false` filtran; `?pendiente=true` lista solo los entrenadores ' +
+      'que esperan aprobación (sin él, no aparecen); `?pagina=` y `?por_pagina=` (10 por defecto, hasta 50). Devuelve `{ usuarios, total, pagina, por_pagina }`.',
   })
   usuarios(
     @Query('texto') texto?: string,
     @Query('rol') rol?: string,
     @Query('activo') activo?: string,
+    @Query('pendiente') pendiente?: string,
     @Query('pagina') pagina?: string,
     @Query('por_pagina') por_pagina?: string,
   ) {
-    return this.admin.listarUsuarios({ texto, rol, activo, pagina, por_pagina })
+    return this.admin.listarUsuarios({ texto, rol, activo, pendiente, pagina, por_pagina })
+  }
+
+  @Post('usuarios/:id/aprobar')
+  @Roles('administrador')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Aceptar un entrenador', description: 'El entrenador que se registró puede iniciar sesión desde ahora.' })
+  aprobar(@Param('id') id: string) {
+    return this.admin.aprobarEntrenador(id)
+  }
+
+  @Post('usuarios/:id/rechazar')
+  @Roles('administrador')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Rechazar un entrenador', description: 'Borra la cuenta pendiente (no tiene datos); el correo queda libre para registrarse otra vez.' })
+  @ApiOkResponse({ description: '`{ ok: true }`' })
+  rechazar(@Param('id') id: string) {
+    return this.admin.rechazarEntrenador(id)
   }
 
   @Post('grupos')

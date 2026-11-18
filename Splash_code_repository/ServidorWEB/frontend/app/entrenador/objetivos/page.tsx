@@ -1,7 +1,7 @@
 'use client'
 
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useDatosEntrenador } from '@/components/entrenador/datos'
 import { ProgresoObjetivo } from '@/components/entrenador/progreso-objetivo'
@@ -10,6 +10,7 @@ import { Aviso, BOTON, CAMPO, Tarjeta } from '@/components/nadador/ui'
 import { ErrorApi, api } from '@/lib/api'
 import { cumplimiento, NOMBRE_TIPO, UNIDAD_TIPO } from '@/lib/objetivos'
 import type { TipoObjetivo } from '@/lib/tipos'
+import { useParametroUrl } from '@/shared/hooks/use-parametro-url'
 
 const hoyIso = () => new Date().toISOString().slice(0, 10)
 const enDias = (n: number) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10)
@@ -22,23 +23,15 @@ const AYUDA: Record<TipoObjetivo, string> = {
 /** Objetivos de mis nadadores: crear, cambiar, borrar y ver cuánto cumplieron. */
 export default function ObjetivosEntrenador() {
   const { datos, problema, recargar } = useDatosEntrenador()
-  const [form, setForm] = useState({ nadador_id: '', tipo: 'distancia' as TipoObjetivo, meta: '', desde: hoyIso(), hasta: enDias(30), descripcion: '' })
+  const nadadorUrl = useParametroUrl('nadador')
+  const [form, setForm] = useState({ nadador_id: null as string | null, tipo: 'distancia' as TipoObjetivo, meta: '', desde: hoyIso(), hasta: enDias(30), descripcion: '' })
   const [editando, setEditando] = useState<{ id: string; meta: string; desde: string; hasta: string } | null>(null)
   const [filtro, setFiltro] = useState<'todos' | 'pendientes' | 'alcanzados' | 'vencidos'>('todos')
-  const [deNadador, setDeNadador] = useState('')
+  const [nadadorFiltrado, setDeNadador] = useState<string | null>(null)
   const [aviso, setAviso] = useState<{ tipo: 'info' | 'error'; texto: string } | null>(null)
 
-  useEffect(() => {
-    try {
-      const n = new URLSearchParams(window.location.search).get('nadador')
-      if (n) {
-        setDeNadador(n)
-        setForm((f) => ({ ...f, nadador_id: n }))
-      }
-    } catch {
-      /* sin URL */
-    }
-  }, [])
+  const deNadador = nadadorFiltrado ?? nadadorUrl ?? ''
+  const nadadorFormulario = form.nadador_id ?? nadadorUrl ?? ''
 
   async function hacer(accion: () => Promise<unknown>, ok: string) {
     setAviso(null)
@@ -72,7 +65,7 @@ export default function ObjetivosEntrenador() {
           onSubmit={async (e) => {
             e.preventDefault()
             const ok = await hacer(
-              () => api.crearObjetivo({ nadador_id: form.nadador_id, tipo: form.tipo, meta: Number(form.meta.replace(',', '.')), desde: form.desde, hasta: form.hasta, descripcion: form.descripcion.trim() || null }),
+              () => api.crearObjetivo({ nadador_id: nadadorFormulario, tipo: form.tipo, meta: Number(form.meta.replace(',', '.')), desde: form.desde, hasta: form.hasta, descripcion: form.descripcion.trim() || null }),
               'Objetivo creado.',
             )
             if (ok) setForm({ ...form, meta: '', descripcion: '' })
@@ -81,7 +74,7 @@ export default function ObjetivosEntrenador() {
         >
           <label className="text-sm text-[#64748B]">
             Nadador
-            <select required value={form.nadador_id} onChange={(e) => setForm({ ...form, nadador_id: e.target.value })} className={CAMPO}>
+            <select required value={nadadorFormulario} onChange={(e) => setForm({ ...form, nadador_id: e.target.value })} className={CAMPO}>
               <option value="">Elegí un nadador</option>
               {datos?.nadadores.map((n) => <option key={n.id} value={n.id}>{n.nombre}</option>)}
             </select>

@@ -87,7 +87,9 @@ async function reenviar(req: Request, { params }: { params: Promise<{ ruta: stri
   // al ingresar o registrarse, el token queda en la cookie y al navegador solo le llega el usuario
   if (r.ok && (camino === 'auth/ingresar' || camino === 'auth/registro' || (camino === 'auth/yo' && req.method === 'PATCH'))) {
     try {
-      const { token: nuevo, usuario } = JSON.parse(texto) as { token: string; usuario: unknown }
+      const { token: nuevo, usuario } = JSON.parse(texto) as { token?: string; usuario: unknown }
+      // entrenador recién registrado: espera la aprobación del administrador, no hay sesión que guardar
+      if (!nuevo) return new Response(texto, respuesta)
       return new Response(JSON.stringify({ usuario }), {
         ...respuesta,
         headers: { ...respuesta.headers, 'Set-Cookie': cookieDeSesion(req, nuevo, DURACION_S) },

@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, UserMinus } from 'lucide-react'
+import { Check, Plus, UserMinus, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import { GestionUsuarios } from '@/components/admin/gestion-usuarios'
@@ -17,19 +17,54 @@ export default function EntrenadoresAdmin() {
   // entrenadores a los que se les puede dar un grupo (activos) y el formulario de grupo nuevo
   const [entrenadores, setEntrenadores] = useState<Usuario[]>([])
   const [nuevo, setNuevo] = useState({ entrenador: '', nombre: '' })
+  // entrenadores que se registraron y esperan aprobación
+  const [solicitudes, setSolicitudes] = useState<Usuario[] | null>(null)
+  const [avisoSolicitud, setAvisoSolicitud] = useState<{ tipo: 'info' | 'error'; texto: string } | null>(null)
+  // al aceptar uno, la tabla de entrenadores se vuelve a montar para que aparezca
+  const [version, setVersion] = useState(0)
 
-  const cargar = useCallback(async () => {
+  const cargarSolicitudes = useCallback(async () => {
     try {
-      const [g, e, a] = await Promise.all([
+      setSolicitudes((await api.adminSolicitudesEntrenador()).usuarios)
+    } catch (e) {
+      setSolicitudes([])
+      setAvisoSolicitud({ tipo: 'error', texto: e instanceof ErrorApi ? e.message : 'No se pudieron cargar las solicitudes.' })
+    }
+  }, [])
+  useEffect(() => {
+    void cargarSolicitudes()
+  }, [cargarSolicitudes])
+
+  async function resolver(u: Usuario, aceptar: boolean) {
+    if (!aceptar && !window.confirm(`¿Rechazar la solicitud de ${u.nombre} (${u.email})? Su cuenta se borra y podrá volver a registrarse.`)) return
+    setAvisoSolicitud(null)
+    try {
+      if (aceptar) await api.adminAprobarEntrenador(u.id)
+      else await api.adminRechazarEntrenador(u.id)
+      setAvisoSolicitud({ tipo: 'info', texto: aceptar ? `${u.nombre} ya puede iniciar sesión como entrenador.` : `Se rechazó la solicitud de ${u.nombre}.` })
+      await cargarSolicitudes()
+      if (aceptar) {
+        setVersion((v) => v + 1)
+        await cargar()
+      }
+    } catch (e) {
+      setAvisoSolicitud({ tipo: 'error', texto: e instanceof ErrorApi ? e.message : 'No se pudo hacer el cambio.' })
+    }
+  }
+
+  const cargar = useCallback(() => {
+    return Promise.all([
         api.grupos(), // al administrador le llegan los grupos de todos
         api.adminUsuarios({ rol: 'entrenador', activo: 'true', porPagina: 50 }),
         api.adminUsuarios({ rol: 'administrador', activo: 'true', porPagina: 50 }),
       ])
-      setGrupos(g)
-      setEntrenadores([...e.usuarios, ...a.usuarios])
-    } catch (e) {
-      setAviso({ tipo: 'error', texto: e instanceof ErrorApi ? e.message : 'No se pudieron cargar los grupos.' })
-    }
+      .then(([g, e, a]) => {
+        setGrupos(g)
+        setEntrenadores([...e.usuarios, ...a.usuarios])
+      })
+      .catch((e: unknown) => {
+        setAviso({ tipo: 'error', texto: e instanceof ErrorApi ? e.message : 'No se pudieron cargar los grupos.' })
+      })
   }, [])
   useEffect(() => {
     void cargar()
@@ -53,8 +88,39 @@ export default function EntrenadoresAdmin() {
 
   return (
     <>
-      <Encabezado titulo="Entrenadores" bajada="Registrar, editar, activar o desactivar entrenadores, y asignarles nadadores en sus grupos." />
+      <Encabezado titulo="Entrenadores" bajada="Aceptar a quienes se registran como entrenadores, editarlos, activarlos o desactivarlos, y asignarles nadadores en sus grupos." />
+
+      <Tarjeta
+        className="mb-6"
+        titulo={`Solicitudes de entrenador${solicitudes?.length ? ` (${solicitudes.length})` : ''}`}
+        subtitulo="Quien se registra como entrenador no puede ingresar hasta que lo aceptes. Si lo rechazas, su cuenta se borra."
+      >
+        {avisoSolicitud && <div className="mb-4"><Aviso tipo={avisoSolicitud.tipo}>{avisoSolicitud.texto}</Aviso></div>}
+        {solicitudes === null && <p className="text-sm text-[#64748B]">Cargando…</p>}
+        {solicitudes?.length === 0 && <p className="text-sm text-[#64748B]">No hay solicitudes pendientes.</p>}
+        {!!solicitudes?.length && (
+          <ul className="divide-y divide-[#F1F5F9]">
+            {solicitudes.map((u) => (
+              <li key={u.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-[#0F172A]">{u.nombre}</p>
+                  <p className="truncate text-sm text-[#64748B]">
+                    {u.email}{u.telefono ? ` · ${u.telefono}` : ''}
+                    {u.creado_en ? ` · se registró el ${new Date(u.creado_en).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => void resolver(u, true)} className={BOTON.primario}><Check className="size-4" /> Aceptar</button>
+                  <button onClick={() => void resolver(u, false)} className={BOTON.terciario}><X className="size-4" /> Rechazar</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Tarjeta>
+
       <GestionUsuarios
+        key={version}
         rol="entrenador"
         alCambiar={() => void cargar()}
         extra={[

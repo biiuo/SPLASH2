@@ -1,4 +1,4 @@
-import { SafeSplashApp } from '@/components/safesplash-app'
+import { SafeSplashApp } from '@/features/landing'
 
 export default function Page() {
   return <SafeSplashApp />

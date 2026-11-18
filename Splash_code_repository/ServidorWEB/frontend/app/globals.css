@@ -157,8 +157,26 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
+  body {
+    width: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+  }
   body {
     @apply bg-background text-foreground;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -297,4 +315,19 @@
     radial-gradient(900px 380px at 85% -120px, color-mix(in srgb, var(--acento-2) 22%, transparent), transparent 70%),
     radial-gradient(700px 300px at 0% -100px, color-mix(in srgb, var(--acento) 12%, transparent), transparent 70%),
     #f4f8fd;
+}
+
+/* Personaje del cuestionario del nadador (components/nadador/personaje.tsx) */
+@keyframes personaje-flotar {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+@keyframes personaje-olas {
+  from { transform: translateX(0); }
+  to { transform: translateX(-40px); }
+}
+.personaje-flotar { animation: personaje-flotar 3.2s ease-in-out infinite; }
+.personaje-olas { animation: personaje-olas 2.4s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .personaje-flotar, .personaje-olas { animation: none; }
 }

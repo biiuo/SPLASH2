@@ -90,14 +90,18 @@ export function Aviso({ tipo = 'info', children }: { tipo?: 'info' | 'error' | '
 export function useMisSesiones(limite = 100) {
   const [filas, setFilas] = useState<FilaSesion[] | null>(null)
   const [problema, setProblema] = useState<string | null>(null)
+  const [actualizado, setActualizado] = useState(() => Date.now())
 
-  const cargar = useCallback(async () => {
-    try {
-      setFilas((await api.sesionesRecientes(limite)).map(filaDeSesion))
-      setProblema(null)
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo conectar con el servidor.')
-    }
+  const cargar = useCallback(() => {
+    return api.sesionesRecientes(limite)
+      .then((sesiones) => {
+        setFilas(sesiones.map(filaDeSesion))
+        setActualizado(Date.now())
+        setProblema(null)
+      })
+      .catch((e: unknown) => {
+        setProblema(e instanceof ErrorApi ? e.message : 'No se pudo conectar con el servidor.')
+      })
   }, [limite])
 
   useEffect(() => {
@@ -109,5 +113,5 @@ export function useMisSesiones(limite = 100) {
     return () => avisos.close()
   }, [cargar])
 
-  return { filas, problema, recargar: cargar }
+  return { filas, problema, recargar: cargar, actualizado }
 }

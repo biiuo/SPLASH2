@@ -4,8 +4,11 @@ export type Rol = 'administrador' | 'entrenador' | 'nadador'
 
 export const ROLES: readonly Rol[] = ['administrador', 'entrenador', 'nadador']
 
-/** Los roles que una persona puede elegir al registrarse. Un administrador lo crea otro administrador (o el arranque). */
+/** Roles disponibles en el registro público; las cuentas de entrenador requieren aprobación. */
 export const ROLES_REGISTRABLES: readonly Rol[] = ['entrenador', 'nadador']
+
+/** Rol inicial de una cuenta creada mediante registro público. */
+export const ROL_REGISTRO_PUBLICO: Rol = 'nadador'
 
 export type Usuario = {
   id: string
@@ -17,6 +20,8 @@ export type Usuario = {
   creado_en?: string
   /** Teléfono de contacto (opcional). */
   telefono?: string | null
+  /** Entrenador que se registró y espera la aprobación del administrador (no puede iniciar sesión). */
+  pendiente?: boolean
 }
 
 /** Lo que va dentro del token: quién es y qué rol tiene. */

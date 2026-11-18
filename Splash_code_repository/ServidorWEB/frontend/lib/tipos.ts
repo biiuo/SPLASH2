@@ -1,8 +1,8 @@
 // El contrato con la API (backend). Son solo tipos: la lógica de negocio (validar, evaluar, calcular la homografía)
 // vive en el backend. Si cambia una respuesta de la API, se cambia acá.
 
-export type Punto = [number, number]
-export type Matriz3 = [[number, number, number], [number, number, number], [number, number, number]]
+import type { Distorsion, Matriz3, Punto } from '@/domain/calibracion/geometria'
+export type { Distorsion, Matriz3, Punto } from '@/domain/calibracion/geometria'
 
 // ---------------------------------------------------------------- configuración
 
@@ -103,9 +103,6 @@ export type PuntosReferencia = {
   umbrales_error_px: { bueno: number; aceptable: number }
 }
 
-/** Curvatura del lente (la estima el backend): para dibujar la rejilla como la ve la cámara. */
-export type Distorsion = { k1: number; centro: Punto; escala: number }
-
 /** Dónde se cuenta la llegada a cada pared (m desde la de salida) si la cámara no la ve. null = en la pared. */
 export type Llegada = { inicio_m: number | null; fin_m: number | null }
 
@@ -181,7 +178,17 @@ export type CalibracionGuardada = {
 
 export type Rol = 'administrador' | 'entrenador' | 'nadador'
 
-export type Usuario = { id: string; email: string; nombre: string; rol: Rol; activo: boolean; creado_en?: string; telefono?: string | null }
+export type Usuario = {
+  id: string
+  email: string
+  nombre: string
+  rol: Rol
+  activo: boolean
+  creado_en?: string
+  telefono?: string | null
+  /** Entrenador registrado que espera la aprobación del administrador. */
+  pendiente?: boolean
+}
 
 // ---------------------------------------------------------------- sesiones y resultados
 
@@ -246,51 +253,7 @@ export type Grupo = {
 /** Un nadador de la lista de todos, con los ids de MIS grupos en los que ya está. */
 export type NadadorDeLaLista = Nadador & { mis_grupos: string[] }
 
-export type EventoGuardado = {
-  id: string
-  carril: number
-  identidad: number | null
-  tipo: 'cruce_nodo' | 'viraje' | 'inicio_descanso' | 'fin_descanso'
-  nodo_m: number | null
-  ts_captura: string
-  /** false = inferido (no se estaba viendo al nadador). */
-  observado: boolean
-}
-
-export type TramoGuardado = {
-  id: string
-  carril: number
-  identidad: number | null
-  nodo_desde_m: number
-  nodo_hasta_m: number
-  t_inicio: string
-  t_fin: string
-  distancia_m: number
-  velocidad_ms: number
-  observado: boolean
-}
-
-/**
- * Un largo completo (de pared a pared), armado por el backend a partir de los tramos. `estimado` = alguno de sus
- * tramos no se vio: no es una medición confirmada.
- */
-export type Largo = {
-  numero: number
-  carril: number
-  desde_m: number
-  hasta_m: number
-  t_inicio: string
-  t_fin: string
-  duracion_s: number
-  velocidad_ms: number
-  estimado: boolean
-  /** Viraje + pausa desde el largo anterior (null en el primero). */
-  pausa_previa_s: number | null
-  /** Ids de los tramos que lo forman. */
-  tramos: string[]
-}
-
-export type ResultadosSesion = { eventos: EventoGuardado[]; tramos: TramoGuardado[]; largos: Largo[]; largo_m: number }
+export type { EventoGuardado, TramoGuardado, Largo, ResultadosSesion } from '@/domain/sesion/resultados'
 
 /** Una sesión del historial, con el resumen de lo medido (GET /api/sesiones). */
 export type ResumenCarril = {
@@ -322,28 +285,14 @@ export type ResumenSesion = Omit<Sesion, 'carriles'> & {
   por_carril: ResumenCarril[]
 }
 
-/** Una calibración del historial. Cada una es una posición de la cámara, con sus zonas. */
-export type CalibracionResumen = {
-  id: string
-  nombre: string | null
-  /** Tamaño de la imagen sobre la que se calibró: las zonas se guardan en esos píxeles. */
-  image_size: [number, number]
-  creada: string
-  completa: boolean
-  rmse_m: number | null
-  cruzado_m: number | null
-  n_puntos: number
-  /** Nombres de las zonas guardadas (vacío si todavía no tiene). */
-  zonas: string[]
-  activa: boolean
-  /** Si se guardó la imagen sobre la que se calibró. */
-  tiene_imagen: boolean
-}
+export type { CalibracionResumen } from '@/domain/calibracion/calibracion-resumen'
 
 // ---------------------------------------------------------------- administración
 
 export type ResumenAdmin = {
   usuarios: Record<Rol, number>
+  /** Entrenadores que esperan aprobación. */
+  pendientes?: number
   sesiones: { activa: number; finalizada: number; cancelada: number; total: number; con_errores: number }
   por_dia: { dia: string; sesiones: number }[]
   recientes: ResumenSesion[]
@@ -390,4 +339,92 @@ export type Objetivo = {
   hasta: string
   descripcion: string | null
   creado_en: string
+}
+
+// ---------------------------------------------------------------- perfil deportivo del nadador
+
+export type Estilo = 'libre' | 'espalda' | 'pecho' | 'mariposa'
+export type Sexo = 'masculino' | 'femenino' | 'no_indica'
+
+/** Las respuestas del cuestionario (todas opcionales; el backend las valida). */
+export type RespuestasPerfil = {
+  fecha_nacimiento?: string
+  sexo?: Sexo
+  estatura_cm?: number
+  peso_kg?: number
+  mano_dominante?: 'derecha' | 'izquierda' | 'ambas'
+  tiene_experiencia?: boolean
+  tiempo_practicando?: 'menos_6m' | '6_12m' | '1_2a' | '3_5a' | 'mas_5a'
+  nivel?: 'principiante' | 'intermedio' | 'avanzado' | 'competitivo'
+  competencias?: 'nunca' | 'locales' | 'regionales' | 'nacionales' | 'internacionales'
+  entrena_actualmente?: boolean
+  estilos?: Estilo[]
+  estilo_favorito?: Estilo
+  estilo_fuerte?: Estilo
+  estilo_dificil?: Estilo
+  distancias?: (number | 'otra')[]
+  distancia_otra?: string
+  conoce_tiempos?: 'si' | 'algunos' | 'no'
+  mejor_distancia?: number | 'otra'
+  mejor_distancia_otra?: string
+  metros_sin_parar?: '25' | '50' | '100' | '200' | '400' | 'mas_400' | 'no_se' | 'otro'
+  metros_sin_parar_otro?: string
+  minutos_continuos?: 'menos_5' | '5_15' | '15_30' | '30_45' | 'mas_45' | 'otro'
+  minutos_continuos_otro?: string
+  resistencia?: 'baja' | 'media' | 'alta'
+  objetivos?: ('tiempos' | 'resistencia' | 'velocidad' | 'tecnica' | 'estilos' | 'competir' | 'condicion' | 'retomar' | 'otro')[]
+  objetivo_otro?: string
+  meta_tiempo?: boolean
+  distancia_mejorar?: number | 'otra'
+  distancia_mejorar_otra?: string
+  plazo?: '1m' | '3m' | '6m' | '1a'
+  aspecto_mejorar?: 'velocidad' | 'resistencia' | 'tecnica' | 'respiracion' | 'coordinacion' | 'otro'
+  aspecto_mejorar_otro?: string
+  meta_libre?: string
+  dias_semana?: number
+  minutos_sesion?: 30 | 45 | 60 | 90 | 120
+  horario?: 'manana' | 'tarde' | 'noche'
+  dias?: ('lun' | 'mar' | 'mie' | 'jue' | 'vie' | 'sab' | 'dom')[]
+  tiene_entrenador?: boolean
+  piscina_m?: 25 | 50
+  piscina_deseada?: '25' | '50' | 'ambas' | 'no_definida'
+  sesiones_semana?: number
+  tuvo_lesion?: boolean
+  lesion_detalle?: string
+  suspendio_entrenamiento?: boolean
+  tiempo_sin_entrenar?: 'menos_1m' | '1_6m' | '6_12m' | 'mas_1a'
+  usa_dispositivo?: boolean
+  registra_tiempos?: boolean
+  tiempo_objetivo?: string
+  comentario_adicional?: string
+}
+
+export type TiempoPersonal = { id: string; estilo: Estilo; distancia_m: number; piscina_m: number; tiempo_ms: number; fecha: string; creado_en: string }
+
+/** Mejor, promedio y último tiempo de una combinación de estilo + distancia + piscina. */
+export type MarcaPersonal = {
+  estilo: Estilo
+  distancia_m: number
+  piscina_m: number
+  mejor_ms: number
+  mejor_fecha: string
+  promedio_ms: number
+  ultimo_ms: number
+  ultima_fecha: string
+  registros: number
+}
+
+export type VistaPerfil = {
+  nadador_id: string
+  nombre: string
+  /** nuevo: nunca lo abrió · en_progreso · omitido: "completar más tarde" · completo */
+  estado: 'nuevo' | 'en_progreso' | 'omitido' | 'completo'
+  etapa: number
+  respuestas: RespuestasPerfil
+  edad: number | null
+  completado_en: string | null
+  actualizado_en: string | null
+  tiempos: TiempoPersonal[]
+  marcas: MarcaPersonal[]
+  historia: string[]
 }

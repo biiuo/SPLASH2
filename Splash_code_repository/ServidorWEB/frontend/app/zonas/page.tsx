@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 
 import { ConSesion } from '@/components/con-sesion'
-import { ZoneEditor } from '@/components/zone-editor'
+import { ZoneEditor } from '@/features/zonas'
+import { LimiteError } from '@/shared/ui/limite-error'
 
 export const metadata: Metadata = {
   title: 'Zonas de análisis · SafeSplash',
@@ -10,7 +11,9 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <ConSesion roles={['administrador']}>
-      <ZoneEditor />
+      <LimiteError>
+        <ZoneEditor />
+      </LimiteError>
     </ConSesion>
   )
 }

@@ -129,7 +129,7 @@ export default function DetalleGrupo({ params }: { params: Promise<{ id: string 
           {PERIODOS.map(([v, t]) => <button key={v} onClick={() => setPeriodo(v)} aria-pressed={periodo === v} className={periodo === v ? BOTON.primario : BOTON.terciario}>{t}</button>)}
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi icono={Waves} etiqueta="Distancia del grupo" valor={Math.round(mg.distancia_m).toLocaleString('es-CO')} unidad="m" />
         <Kpi icono={Gauge} etiqueta="Velocidad media" valor={mg.velocidad_media_ms ? mg.velocidad_media_ms.toFixed(2) : '—'} unidad="m/s" />
         <Kpi icono={Timer} etiqueta="Mejor largo del grupo" valor={formatearSegundos(mg.mejor_largo_s)} nota="largo detectado" />
