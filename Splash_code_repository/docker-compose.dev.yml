@@ -94,6 +94,13 @@ services:
     networks: [backend]
 
   # ---------------------------------------------------------------- relé RTSP de la cámara
+  # Probar con la webcam de la PC:
+  #   Linux:   docker compose -f docker-compose.dev.yml -f docker-compose.webcam.yml up --watch ia
+  #   Windows: Docker no deja que un contenedor use la webcam (CAMERA_SOURCE=0 no sirve). Se publica desde Windows
+  #            en este relé y la IA la lee como si fuera la cámara real:
+  #   docker compose -f docker-compose.dev.yml up -d mediamtx
+  #   .\webcam.ps1                        (en otra ventana; deja CAMERA_RTSP_URL vacía y CAMERA_SOURCE sin definir)
+  #   docker compose -f docker-compose.dev.yml up --watch ia
   mediamtx:
     image: bluenviron/mediamtx:1.21.3
     environment:
