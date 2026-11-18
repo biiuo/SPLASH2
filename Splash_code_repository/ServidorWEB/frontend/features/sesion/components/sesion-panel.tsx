@@ -5,7 +5,9 @@ import { Activity, Lock, Play, Square, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ProcesadorCelularPanel } from './procesador-celular'
+import { GraficaVelocidad } from '@/components/grafica-velocidad'
 import { ErrorApi, api } from '@/lib/api'
+import { csvDeSesion, descargarCsv, nombreCsv } from '@/lib/csv-sesion'
 import { useCuenta } from '@/lib/cuenta'
 import { decidirModo, marcarQueProcesoAqui } from '@/lib/modo'
 import { formatearDuracion, formatearVelocidad, resumenPorCarril } from '@/lib/resultados'
@@ -431,6 +433,26 @@ export function SesionPanel({ titulo = 'Sesión de entrenamiento', vacia = 'No h
                 </tbody>
               </table>
             </div>
+          )}
+          {resultados && resultados.tramos.length > 0 && (
+            <GraficaVelocidad
+              tramos={resultados.tramos}
+              eventos={resultados.eventos}
+              inicio={Date.parse(sesion.inicio)}
+              hasta={sesion.fin ? Date.parse(sesion.fin) : ahora}
+              enCurso={!sesion.fin}
+              nadadores={Object.fromEntries(sesion.carriles.map((c) => [c.carril, c.nadador]))}
+            />
+          )}
+          {resultados && (resultados.tramos.length > 0 || resultados.eventos.length > 0) && (
+            <button
+              type="button"
+              onClick={() => descargarCsv(nombreCsv(sesion), csvDeSesion(sesion, resultados, Object.fromEntries(sesion.carriles.map((c) => [c.carril, c.nadador]))))}
+              title="Eventos y tramos de la sesión, para depurar"
+              className="mt-4 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Descargar CSV
+            </button>
           )}
         </div>
       )}
