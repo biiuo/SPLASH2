@@ -4,9 +4,7 @@ import { Download } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Barras, Linea, marcasLineales } from '@/components/graficos'
-import { GraficaVelocidad } from '@/components/grafica-velocidad'
 import { ErrorApi, api } from '@/lib/api'
-import { csvDeSesion, descargarCsv, nombreCsv } from '@/lib/csv-sesion'
 import {
   aTexto,
   calcularMetricas,
@@ -90,13 +88,6 @@ export function DetalleSesion({ sesion, carrilInicial }: { sesion: ResumenSesion
               </select>
             )}
             <button onClick={descargar} className={BOTON.secundario}><Download className="size-4" /> Descargar .txt</button>
-            <button
-              onClick={() => descargarCsv(nombreCsv(sesion), csvDeSesion(sesion, resultados, Object.fromEntries(carriles.map((c) => [c.carril, c.nadador]))))}
-              title="Eventos y tramos de la sesión (todos los carriles que puedas ver), para depurar"
-              className={BOTON.terciario}
-            >
-              <Download className="size-4" /> CSV
-            </button>
           </div>
         }
       >
@@ -230,20 +221,6 @@ export function DetalleSesion({ sesion, carrilInicial }: { sesion: ResumenSesion
             </div>
           </Tarjeta>
         </>
-      )}
-
-      {/* velocidad de cada tramo a lo largo del tiempo, con el descanso en 0 (sale de los tramos: sirve aunque no haya largos completos) */}
-      {datos.tramos.length > 0 && (
-        <Tarjeta>
-          <GraficaVelocidad
-            tramos={datos.tramos}
-            eventos={datos.eventos}
-            inicio={t0}
-            hasta={sesion.fin ? Date.parse(sesion.fin) : Date.now()}
-            enCurso={sesion.estado === 'activa'}
-            nadadores={{ [carril as number]: nadador }}
-          />
-        </Tarjeta>
       )}
 
       {/* los tramos (de marca a marca): de acá salen los largos */}
