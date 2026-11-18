@@ -8,14 +8,13 @@ import {
   EyeOff,
   Lock,
   Mail,
-  Phone,
   ShieldCheck,
   User,
   Waves,
   X,
 } from 'lucide-react'
 import { ErrorApi } from '@/lib/api'
-import { NOMBRE_ROL, useCuenta } from '@/lib/cuenta'
+import { useCuenta } from '@/lib/cuenta'
 
 interface AuthScreenProps {
   mode: 'login' | 'signup'
@@ -33,8 +32,6 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: Au
   const [contrasena, setContrasena] = useState('')
   const [confirmarContrasena, setConfirmarContrasena] = useState('')
   const [nombre, setNombre] = useState('')
-  const [telefono, setTelefono] = useState('')
-  const [rol, setRol] = useState<'nadador' | 'entrenador'>('nadador')
 
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -78,8 +75,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: Au
           email: email.trim(),
           nombre: nombre.trim(),
           contrasena,
-          rol,
-          telefono: telefono.trim() || null,
+          rol: 'nadador',
         })
         if (r.pendiente) {
           setSolicitudEnviada(true)
@@ -116,7 +112,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: Au
       </div>
 
       {/* 2. Tarjeta flotante Soft Translúcida */}
-      <section className={`relative z-10 w-full ${isLogin ? 'max-w-[1080px]' : 'max-w-[920px]'} rounded-[30px] overflow-hidden shadow-[0_32px_90px_rgba(2,12,27,0.72)] border border-white/25 bg-[#082644]/40`}>
+      <section className="relative z-10 w-full max-w-[1080px] rounded-[30px] overflow-hidden shadow-[0_32px_90px_rgba(2,12,27,0.72)] border border-white/25 bg-[#082644]/40">
         {/* Fotografía estática nítida dentro de la tarjeta */}
         <img
           src="/images/piscina/foto-piscina-3.jpeg"
@@ -125,7 +121,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: Au
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#041629]/85 via-[#041629]/20 to-[#041629]/45 pointer-events-none" />
 
-        <div className={`relative z-10 flex flex-col md:flex-row ${isLogin ? 'min-h-[640px]' : 'min-h-[560px]'}`}>
+        <div className="relative z-10 flex flex-col md:h-[min(640px,calc(100dvh-4rem))] md:flex-row">
           {/* COLUMNA IZQUIERDA: Ventana limpia al agua + Bienvenida */}
           <div className="w-full md:w-[42%] p-8 sm:p-11 flex flex-col justify-between min-h-[210px] md:min-h-full">
             <button
@@ -169,7 +165,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: Au
           </div>
 
           {/* COLUMNA DERECHA: Panel Soft Translúcido con curvatura S-Wave limpia */}
-          <div className={`translucent-wave-pane w-full md:w-[60%] md:-ml-[2%] ${isLogin ? 'px-8 sm:px-14 md:pl-24 md:pr-14 py-10 sm:py-12' : 'px-6 sm:px-10 md:pl-20 md:pr-10 py-7 sm:py-8'} flex flex-col justify-center relative`}>
+          <div className="translucent-wave-pane relative flex w-full flex-col px-8 py-10 sm:px-14 sm:py-12 md:-ml-[2%] md:w-[60%] md:overflow-y-auto md:pl-24 md:pr-14">
             <button
               type="button"
               onClick={onBack}
@@ -179,7 +175,7 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: Au
             >
               <X className="h-5 w-5" />
             </button>
-            <div className="w-full max-w-[420px] mx-auto">
+            <div className="my-auto w-full max-w-[420px] mx-auto">
               {/* Botón cerrar para móvil */}
               <button
                 type="button"
@@ -275,30 +271,6 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: Au
                   </div>
                 </div>
 
-                {/* TELÉFONO (opcional, solo al crear la cuenta) */}
-                {!isLogin && (
-                  <div>
-                    <label htmlFor="authPhone" className="block text-xs font-semibold text-sky-100/90 mb-1.5 ml-3">
-                      Teléfono <span className="font-normal text-sky-200/70">(opcional)</span>
-                    </label>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-sky-200/70">
-                        <Phone className="w-4 h-4" />
-                      </span>
-                      <input
-                        id="authPhone"
-                        name="phone"
-                        type="tel"
-                        value={telefono}
-                        onChange={(e) => setTelefono(e.target.value)}
-                        autoComplete="tel"
-                        placeholder="+57 300 000 0000"
-                        className="soft-pill-input w-full rounded-full pl-11 pr-4 py-3 text-sm"
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {/* CONTRASEÑA */}
                 <div>
                   <label
@@ -371,39 +343,6 @@ export function AuthScreen({ mode, onBack, onSignup, onLogin, onRegistered }: Au
                         )}
                       </button>
                     </div>
-                  </div>
-                )}
-
-                {/* SELECTOR DE ROL (SIGN UP) */}
-                {!isLogin && (
-                  <div>
-                    <label className="block text-xs font-semibold text-sky-100/90 mb-1.5 ml-3">
-                      Soy
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['nadador', 'entrenador'] as const).map((r) => {
-                        const active = rol === r
-                        return (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => setRol(r)}
-                            className={`py-2.5 px-4 rounded-full text-xs font-bold transition flex items-center justify-center gap-2 border cursor-pointer ${
-                              active
-                                ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-md shadow-sky-400/25'
-                                : 'bg-[#0d2847] text-white border-white/20 hover:bg-[#113258]'
-                            }`}
-                          >
-                            <span>{NOMBRE_ROL[r]}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {rol === 'entrenador' && (
-                      <p className="mt-2 ml-3 text-[11px] leading-snug text-sky-100/75">
-                        Las cuentas de entrenador las aprueba el administrador antes de poder ingresar.
-                      </p>
-                    )}
                   </div>
                 )}
 

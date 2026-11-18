@@ -56,7 +56,7 @@ export const SLIDES_DATA: SlideItem[] = [
     cta: 'Explorar estadísticas',
     cardTitle: 'Ritmo y Velocidad',
     cardSub: 'Historial por sesión',
-    image: '/images/piscina/foto-piscina-1.jpeg',
+    image: '/images/piscina/Foto%20piscina%203.jpeg',
     fallbackImage: '/images/piscina/Foto%20piscina.jpeg',
   },
   {
@@ -68,8 +68,8 @@ export const SLIDES_DATA: SlideItem[] = [
     cta: 'Crear cuenta gratis',
     cardTitle: 'Control de Sesión',
     cardSub: 'Monitoreo simultáneo',
-    image: '/images/piscina/foto-piscina-2.jpeg',
-    fallbackImage: '/images/piscina/Foto%20Piscina%202.jpeg',
+    image: '/images/pruebas/Foto%20piscina%206.jpeg',
+    fallbackImage: '/images/piscina/foto-piscina-1.jpeg',
   },
 ]
 
@@ -92,17 +92,11 @@ export function HeroCarousel({
   onExploreHowItWorks,
 }: HeroCarouselProps) {
   const [currentSlide, setCurrentSlide] = useState(0)
-  const [autoAdvance, setAutoAdvance] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [imageKey, setImageKey] = useState(0)
   const [imageLoaded, setImageLoaded] = useState(true)
   const mobileMenuId = useId()
   const mobileMenuButton = useRef<HTMLButtonElement>(null)
-
-  const progressBarRef = useRef<HTMLDivElement>(null)
-  const elapsedMsRef = useRef(0)
-  const lastTsRef = useRef<number | null>(null)
-  const animFrameRef = useRef<number>(0)
 
   const totalSlides = SLIDES_DATA.length
 
@@ -118,54 +112,17 @@ export function HeroCarousel({
   }, [mobileMenuOpen])
 
   const goToSlide = useCallback((index: number) => {
-    elapsedMsRef.current = 0
-    if (progressBarRef.current) {
-      progressBarRef.current.style.width = '0%'
-    }
     setImageLoaded(false)
     setCurrentSlide((index + totalSlides) % totalSlides)
     setImageKey((prev) => prev + 1)
     setTimeout(() => setImageLoaded(true), 120)
   }, [totalSlides])
 
-  const goNext = useCallback(() => {
-    goToSlide(currentSlide + 1)
-  }, [currentSlide, goToSlide])
-
-  const goPrev = useCallback(() => {
-    goToSlide(currentSlide - 1)
-  }, [currentSlide, goToSlide])
-
   // Bucle de temporización suave para el progreso del carrusel
   useEffect(() => {
-    const loop = (ts: number) => {
-      if (lastTsRef.current === null) lastTsRef.current = ts
-      const dt = Math.min(ts - lastTsRef.current, 100)
-      lastTsRef.current = ts
-
-      if (autoAdvance && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        elapsedMsRef.current += dt
-        const pct = Math.min(100, (elapsedMsRef.current / SLIDE_DURATION_MS) * 100)
-        if (progressBarRef.current) {
-          progressBarRef.current.style.width = `${pct}%`
-        }
-
-        if (elapsedMsRef.current >= SLIDE_DURATION_MS) {
-          elapsedMsRef.current = 0
-          goToSlide(currentSlide + 1)
-        }
-      }
-
-      animFrameRef.current = requestAnimationFrame(loop)
-    }
-
-    animFrameRef.current = requestAnimationFrame(loop)
-
-    return () => {
-      cancelAnimationFrame(animFrameRef.current)
-      lastTsRef.current = null
-    }
-  }, [autoAdvance, currentSlide, goToSlide])
+    const timer = window.setTimeout(() => goToSlide(currentSlide + 1), SLIDE_DURATION_MS)
+    return () => window.clearTimeout(timer)
+  }, [currentSlide, goToSlide, imageKey])
 
   const currentItem = SLIDES_DATA[currentSlide]
 
@@ -186,39 +143,27 @@ export function HeroCarousel({
     }
   }
 
-  // Previsualización de las siguientes tarjetas a la derecha
-  const previewCards = []
-  const visibleCardsCount = Math.min(3, totalSlides)
-  for (let offset = 1; offset <= visibleCardsCount; offset++) {
-    const targetIdx = (currentSlide + offset) % totalSlides
-    previewCards.push({
-      item: SLIDES_DATA[targetIdx],
-      targetIdx,
-      isNext: offset === 1,
-    })
-  }
-
   return (
     <section
       id="heroCarouselSection"
       aria-label="Carrusel principal SafeSplash"
-      className="relative flex h-[100dvh] w-full flex-col justify-between overflow-hidden select-none bg-slate-950 text-white"
+      className="relative flex min-h-[100dvh] w-full flex-col justify-between overflow-hidden select-none bg-slate-950 text-white"
     >
       {/* 1. CAPA DE FONDO DEL CARRUSEL (Fotos reales con efecto Ken Burns y degradados) */}
       <div id="heroBgLayer" className="absolute inset-0 z-0 bg-slate-900">
-        <img
-          key={imageKey}
-          src={currentItem.image}
-          alt={currentItem.cardTitle}
-          onError={(e) => {
-            if (currentItem.fallbackImage && e.currentTarget.src !== currentItem.fallbackImage) {
-              e.currentTarget.src = currentItem.fallbackImage
-            }
-          }}
-          className={`h-full w-full object-cover object-center transition-opacity duration-700 animate-ken-burns ${
-            imageLoaded ? 'opacity-100' : 'opacity-40'
-          }`}
-        />
+          <img
+            key={imageKey}
+            src={currentItem.image}
+            alt={currentItem.cardTitle}
+            onError={(e) => {
+              if (currentItem.fallbackImage && e.currentTarget.getAttribute('src') !== currentItem.fallbackImage) {
+                e.currentTarget.src = currentItem.fallbackImage
+              }
+            }}
+            className={`relative h-full w-full object-cover object-center transition-opacity duration-700 motion-reduce:transition-none ${
+              imageLoaded ? 'opacity-100' : 'opacity-40'
+            }`}
+          />
         {/* Degradados direccionales para perfecta legibilidad sobre cualquier fotografía */}
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/60 to-slate-950/30" />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-transparent to-slate-950/55" />
@@ -352,7 +297,7 @@ export function HeroCarousel({
       </div>
 
       {/* 3. CONTENIDO PRINCIPAL DEL CARRUSEL (Rail editorial + Texto Hero + Tarjetas Preview) */}
-      <div className="relative z-20 mx-auto my-auto grid min-h-0 w-full max-w-[1440px] grid-cols-1 items-center gap-4 px-4 pt-2 pb-[132px] sm:gap-6 sm:px-8 sm:pb-36 lg:grid-cols-12 lg:gap-6 lg:px-16 lg:pb-32">
+      <div className="relative z-20 mx-auto my-auto grid w-full max-w-[1440px] grid-cols-1 items-center gap-5 px-4 pt-8 pb-[132px] sm:gap-6 sm:px-8 sm:pb-36 lg:grid-cols-12 lg:gap-6 lg:px-16 lg:pb-32">
         {/* Columna Izquierda: Indicador vertical de progreso + Textos principales */}
         <div className="flex items-stretch gap-5 sm:gap-7 lg:col-span-6">
           {/* Rail vertical con dots interactivos */}
@@ -409,107 +354,10 @@ export function HeroCarousel({
                 <span>{currentItem.cta}</span>
                 <span>→</span>
               </button>
-              <button
-                type="button"
-                onClick={goNext}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20"
-              >
-                <span>Siguiente vista</span>
-              </button>
             </div>
           </div>
         </div>
 
-        {/* Columna Derecha: Tarjetas preview + Controles de carrusel */}
-        <div className="flex min-w-0 flex-col items-start justify-center space-y-4 lg:col-span-6 lg:items-end">
-          {/* Deck de tarjetas horizontales interactivas */}
-          <div
-            id="carouselCardsDeck"
-            className="hidden w-full items-stretch gap-4 overflow-x-auto pb-2 sm:flex lg:justify-start xl:justify-end"
-          >
-            {previewCards.map(({ item, targetIdx, isNext }) => (
-              <button
-                key={targetIdx}
-                type="button"
-                onClick={() => goToSlide(targetIdx)}
-                className={`group relative h-56 w-40 flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl text-left transition-all duration-300 sm:h-64 sm:w-48 lg:w-32 xl:w-48 border ${
-                  isNext
-                    ? 'border-sky-300/70 shadow-2xl shadow-sky-950/60 scale-[1.02]'
-                    : 'border-white/20 opacity-85 hover:border-white/50 hover:opacity-100'
-                }`}
-              >
-                <img
-                  src={item.image}
-                  alt={item.cardTitle}
-                  onError={(e) => {
-                    if (item.fallbackImage && e.currentTarget.src !== item.fallbackImage) {
-                      e.currentTarget.src = item.fallbackImage
-                    }
-                  }}
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/25 to-slate-950/20" />
-                <div className="absolute top-3 right-3 left-3 flex items-center justify-between">
-                  <span className="rounded-md border border-white/15 bg-slate-950/60 px-2 py-0.5 text-[10px] font-bold text-sky-300 backdrop-blur-md">
-                    {pad2(targetIdx + 1)}
-                  </span>
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-xs font-bold text-slate-900 shadow">
-                    ↗
-                  </span>
-                </div>
-                <div className="absolute right-3.5 bottom-3.5 left-3.5">
-                  <p className="truncate text-[11px] font-medium text-sky-200/90">{item.cardSub}</p>
-                  <p className="line-clamp-2 text-sm font-bold leading-snug text-white">
-                    {item.cardTitle}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* Barra de controles: Flechas + Barra de progreso + Contador */}
-          <div className="flex w-full max-w-md items-center justify-between gap-4 pt-1">
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={goPrev}
-                aria-label="Diapositiva anterior"
-                className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-white/25 bg-white/10 text-white backdrop-blur-md transition hover:bg-white/25 sm:h-10 sm:w-10"
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                onClick={goNext}
-                aria-label="Siguiente diapositiva"
-                className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-white/30 bg-white/15 text-white backdrop-blur-md transition hover:bg-white/30 sm:h-10 sm:w-10"
-              >
-                →
-              </button>
-              <button
-                type="button"
-                onClick={() => setAutoAdvance(!autoAdvance)}
-                className="min-h-11 cursor-pointer rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-slate-200 backdrop-blur-md transition hover:bg-white/20 sm:min-h-0"
-              >
-                {autoAdvance ? 'Auto: Activo' : 'Auto: Pausado'}
-              </button>
-            </div>
-
-            {/* Línea de progreso de la diapositiva */}
-            <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/20">
-              <div
-                ref={progressBarRef}
-                className="h-full w-0 bg-sky-400 transition-all duration-100"
-              />
-            </div>
-
-            <div className="tabular-nums text-xs font-bold tracking-wider text-white/90">
-              <span>{pad2(currentSlide + 1)}</span>
-              <span className="mx-1 text-white/40">/</span>
-              <span className="text-white/60">{pad2(totalSlides)}</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* 4. FRANJA PANORÁMICA DEL NADADOR EN EL BORDE INFERIOR (100% ancho de lado a lado) */}
