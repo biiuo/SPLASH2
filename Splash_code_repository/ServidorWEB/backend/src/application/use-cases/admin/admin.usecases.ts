@@ -30,6 +30,8 @@ export function conErroresDeDeteccion(s: ResumenSesion): boolean {
 
 export type ResumenAdmin = {
   usuarios: Record<Rol, number>
+  /** Entrenadores que esperan aprobación. */
+  pendientes: number
   sesiones: Record<EstadoSesion, number> & { total: number; con_errores: number }
   /** Sesiones por día de los últimos 30 días (de las recientes). */
   por_dia: { dia: string; sesiones: number }[]
@@ -50,8 +52,9 @@ export class AdminUseCases {
   ) {}
 
   async resumen(): Promise<ResumenAdmin> {
-    const [usuarios, estados, recientes] = await Promise.all([
+    const [usuarios, pendientes, estados, recientes] = await Promise.all([
       this.usuarios.contarPorRol(),
+      this.usuarios.contarPendientes(),
       this.sesiones.contarPorEstado(),
       this.sesiones.listarRecientes(RECIENTES, null),
     ])
@@ -69,6 +72,7 @@ export class AdminUseCases {
     const segundos = carriles.reduce((a, c) => a + (c.velocidad_media_ms ? c.distancia_m / c.velocidad_media_ms : 0), 0)
     return {
       usuarios,
+      pendientes,
       sesiones: {
         ...estados,
         total: estados.activa + estados.finalizada + estados.cancelada,
@@ -86,13 +90,30 @@ export class AdminUseCases {
     }
   }
 
-  /** Buscar cuentas por correo o nombre, rol y estado, de a una página (10 por defecto, hasta 50). */
-  listarUsuarios(q: { texto?: unknown; rol?: unknown; activo?: unknown; pagina?: unknown; por_pagina?: unknown }): Promise<PaginaUsuarios> {
+  /**
+   * Buscar cuentas por correo o nombre, rol y estado, de a una página (10 por defecto, hasta 50).
+   * Los entrenadores que esperan aprobación solo aparecen con `pendiente=true`.
+   */
+  listarUsuarios(q: { texto?: unknown; rol?: unknown; activo?: unknown; pendiente?: unknown; pagina?: unknown; por_pagina?: unknown }): Promise<PaginaUsuarios> {
     const rol = typeof q.rol === 'string' && ROLES.includes(q.rol as Rol) ? (q.rol as Rol) : undefined
     const activo = q.activo === 'true' ? true : q.activo === 'false' ? false : undefined
+    const pendiente = q.pendiente === 'true'
     const pagina = Math.max(1, Math.floor(Number(q.pagina) || 1))
     const porPagina = Math.min(50, Math.max(1, Math.floor(Number(q.por_pagina) || 10)))
-    return this.usuarios.listar({ texto: typeof q.texto === 'string' ? q.texto : undefined, rol, activo, pagina, porPagina })
+    return this.usuarios.listar({ texto: typeof q.texto === 'string' ? q.texto : undefined, rol, activo, pendiente, pagina, porPagina })
+  }
+
+  /** Aceptar a un entrenador que se registró: desde ahora puede iniciar sesión. */
+  async aprobarEntrenador(id: string): Promise<Usuario> {
+    const u = esUuid(id) ? await this.usuarios.aprobar(id) : null
+    if (!u) throw new NoEncontradoException('No hay una solicitud pendiente con ese id.')
+    return u
+  }
+
+  /** Rechazar a un entrenador que se registró: la cuenta se borra (no tenía datos) y el correo queda libre. */
+  async rechazarEntrenador(id: string): Promise<{ ok: true }> {
+    if (!esUuid(id) || !(await this.usuarios.borrarPendiente(id))) throw new NoEncontradoException('No hay una solicitud pendiente con ese id.')
+    return { ok: true }
   }
 
   /** Un entrenador (o administrador) activo al que se le puede dar un grupo. */
@@ -100,6 +121,7 @@ export class AdminUseCases {
     const u = typeof id === 'string' && esUuid(id) ? await this.usuarios.obtener(id) : null
     if (!u || (u.rol !== 'entrenador' && u.rol !== 'administrador')) throw new ValidacionException('Elegí un entrenador.')
     if (!u.activo) throw new ValidacionException(`La cuenta de ${u.nombre} está desactivada.`)
+    if (u.pendiente) throw new ValidacionException(`${u.nombre} todavía no fue aprobado como entrenador.`)
     return u.id
   }
 

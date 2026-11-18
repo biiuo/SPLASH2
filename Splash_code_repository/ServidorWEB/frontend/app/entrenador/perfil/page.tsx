@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
-import { PerfilCuenta } from '@/components/perfil-cuenta'
+import { PerfilCuenta } from '@/features/cuenta'
 import { api } from '@/lib/api'
 import type { Grupo } from '@/lib/tipos'
 

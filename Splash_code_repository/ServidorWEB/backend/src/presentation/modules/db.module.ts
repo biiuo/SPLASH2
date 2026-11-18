@@ -12,6 +12,8 @@ import { LATIDO_REPOSITORY } from '../../domain/repositories/latido.repository'
 import { PrismaLatidoRepository } from '../../infrastructure/repositories/prisma-latido.repository'
 import { OBJETIVO_REPOSITORY } from '../../domain/repositories/objetivo.repository'
 import { PrismaObjetivoRepository } from '../../infrastructure/repositories/prisma-objetivo.repository'
+import { PERFIL_NADADOR_REPOSITORY } from '../../domain/repositories/perfil-nadador.repository'
+import { PrismaPerfilNadadorRepository } from '../../infrastructure/repositories/prisma-perfil-nadador.repository'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { PrismaCalibracionRepository } from '../../infrastructure/repositories/prisma-calibracion.repository'
 import { PrismaConfiguracionRepository } from '../../infrastructure/repositories/prisma-configuracion.repository'
@@ -32,7 +34,8 @@ import { PrismaSesionRepository } from '../../infrastructure/repositories/prisma
     { provide: GRUPO_REPOSITORY, useClass: PrismaGrupoRepository },
     { provide: LATIDO_REPOSITORY, useClass: PrismaLatidoRepository },
     { provide: OBJETIVO_REPOSITORY, useClass: PrismaObjetivoRepository },
+    { provide: PERFIL_NADADOR_REPOSITORY, useClass: PrismaPerfilNadadorRepository },
   ],
-  exports: [PrismaService, CONFIGURACION_REPOSITORY, CALIBRACION_REPOSITORY, SESION_REPOSITORY, RESULTADOS_REPOSITORY, USUARIO_REPOSITORY, NADADOR_REPOSITORY, GRUPO_REPOSITORY, LATIDO_REPOSITORY, OBJETIVO_REPOSITORY],
+  exports: [PrismaService, CONFIGURACION_REPOSITORY, CALIBRACION_REPOSITORY, SESION_REPOSITORY, RESULTADOS_REPOSITORY, USUARIO_REPOSITORY, NADADOR_REPOSITORY, GRUPO_REPOSITORY, LATIDO_REPOSITORY, OBJETIVO_REPOSITORY, PERFIL_NADADOR_REPOSITORY],
 })
 export class DbModule {}

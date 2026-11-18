@@ -16,22 +16,25 @@ export type DatosEntrenador = {
 export function useDatosEntrenador() {
   const [datos, setDatos] = useState<DatosEntrenador | null>(null)
   const [problema, setProblema] = useState<string | null>(null)
+  const [actualizado, setActualizado] = useState(() => Date.now())
 
-  const cargar = useCallback(async () => {
-    try {
-      const [nadadores, grupos, sesiones, objetivos] = await Promise.all([api.todosLosNadadores(), api.grupos(), api.sesionesRecientes(500), api.objetivos()])
-      setDatos({ nadadores, grupos, sesiones, objetivos })
-      setProblema(null)
-    } catch (e) {
-      setProblema(e instanceof ErrorApi ? e.message : 'No se pudo conectar con el servidor.')
-    }
+  const cargar = useCallback(() => {
+    return Promise.all([api.todosLosNadadores(), api.grupos(), api.sesionesRecientes(500), api.objetivos()])
+      .then(([nadadores, grupos, sesiones, objetivos]) => {
+        setDatos({ nadadores, grupos, sesiones, objetivos })
+        setActualizado(Date.now())
+        setProblema(null)
+      })
+      .catch((e: unknown) => {
+        setProblema(e instanceof ErrorApi ? e.message : 'No se pudo conectar con el servidor.')
+      })
   }, [])
 
   useEffect(() => {
     void cargar()
   }, [cargar])
 
-  return { datos, problema, recargar: cargar }
+  return { datos, problema, recargar: cargar, actualizado }
 }
 
 const DIA = 24 * 60 * 60 * 1000
