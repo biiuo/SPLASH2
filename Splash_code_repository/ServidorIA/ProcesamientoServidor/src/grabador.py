@@ -8,8 +8,13 @@ unos segundos DESPUÉS de la última.
 
   * Corre en su propio hilo: la cámara y el modelo nunca esperan al disco. Si el disco no alcanza, se descartan frames
     del clip (se avisa), no se frena la inferencia.
-  * El clip lleva lo mismo que ve la ventana de depuración: cajas con el id de cada nadador, las zonas y la hora de
-    captura del frame, para poder cruzarlo con el CSV de posiciones enviadas.
+  * Por defecto el clip lleva el video LIMPIO, tal como llegó de la cámara (sin cajas ni texto): es lo que sirve para
+    volver a correr el pipeline con el archivo y para el informe. La hora de captura de cada frame procesado queda en
+    clip_*.tiempos.csv al lado, para cruzarlo con el CSV de posiciones enviadas.
+    Con GRABAR_ANOTADO=1 el clip lleva lo mismo que ve la ventana de depuración (cajas, zonas, hora).
+  * Códec: MJPG en .avi con calidad 95 (pesa más, pero se ve como la cámara y funciona en cualquier instalación de OpenCV,
+    sin ffmpeg). H.264 solo si se pide con GRABAR_CODEC=h264: en Windows con pip OpenCV suele decir que lo abrió y no
+    haber podido iniciar el encoder (falta openh264), y el clip queda vacío. También existe GRABAR_CODEC=mp4v.
   * El clip se escribe a un ritmo FIJO (`fps_salida`, 10 por defecto) ubicando cada frame procesado por su hora de
     captura: si el modelo va más rápido se saltan frames, si va más lento se repiten. Así el clip siempre se ve a
     velocidad real, aunque el ritmo de procesamiento cambie.
@@ -18,6 +23,7 @@ unos segundos DESPUÉS de la última.
 Solo usa OpenCV y la biblioteca estándar.
 """
 import collections
+import os
 import datetime as dt
 import queue
 import threading
@@ -48,6 +54,9 @@ class GrabadorActividad(threading.Thread):
         self._parar = threading.Event()
         self._writer = None
         self._ruta = None
+        self._tiempos = None
+        self.anotado = os.environ.get("GRABAR_ANOTADO", "0") == "1"
+        self._codec = None          # (fourcc, extensión), se decide la primera vez
         self._tam = None
         self._t_clip = 0.0          # t_cap del primer frame del clip
         self._t_actividad = 0.0     # t_cap de la última vez que hubo un nadador
@@ -119,15 +128,34 @@ class GrabadorActividad(threading.Thread):
     def _abrir_clip(self, w, h):
         base = self._previo[0][0] if self._previo else time.time()
         marca = (dt.datetime.fromtimestamp(base) if base > 1e9 else dt.datetime.now()).strftime("%Y%m%d_%H%M%S")
-        self._ruta = self.carpeta / f"clip_{marca}.mp4"
-        self._writer = cv2.VideoWriter(str(self._ruta), cv2.VideoWriter_fourcc(*"mp4v"), self.fps_salida, (w, h))
-        if not self._writer.isOpened():
-            self._writer = None
-            raise RuntimeError(f"no pude abrir {self._ruta} para grabar")
+        self._writer, self._ruta = self._abrir_writer(marca, self.fps_salida, (w, h))
+        if self._writer is None:
+            raise RuntimeError("no pude abrir ningún códec de video para grabar (probé H.264, MJPG y mp4v)")
+        self._tiempos = open(self._ruta.with_suffix(".tiempos.csv"), "w", encoding="utf-8")
+        self._tiempos.write("frame,hora,t_cap\n")
         self._tam, self._n = (w, h), 0
         self._t_clip = self._previo[0][0] if self._previo else 0.0
         self._t_sig = self._t_clip
         self.log(f"[grabador] empieza {self._ruta.name} ({self.fps_salida:g} fps)")
+
+    def _abrir_writer(self, marca, fps, tam):
+        """Abre el primer códec que funcione; el que funcionó se recuerda para los clips siguientes."""
+        pedido = os.environ.get("GRABAR_CODEC", "").lower()
+        todos = {"h264": [("avc1", ".mp4"), ("H264", ".mp4")], "mjpg": [("MJPG", ".avi")], "mp4v": [("mp4v", ".mp4")]}
+        orden = [self._codec] if self._codec else (todos[pedido] if pedido in todos else todos["mjpg"] + todos["mp4v"])
+        for fourcc, ext in orden:
+            ruta = self.carpeta / f"clip_{marca}{ext}"
+            w = cv2.VideoWriter(str(ruta), cv2.VideoWriter_fourcc(*fourcc), fps, tam)
+            if w.isOpened():
+                if fourcc == "MJPG":
+                    w.set(cv2.VIDEOWRITER_PROP_QUALITY, 95)
+                if self._codec is None:
+                    self.log(f"[grabador] códec: {fourcc} ({ext})")
+                self._codec = (fourcc, ext)
+                return w, ruta
+            w.release()
+            ruta.unlink(missing_ok=True)
+        return None, None
 
     def _escribir(self, t_cap, frame, estables, zonas):
         """Ubica el frame por su hora de captura en el ritmo fijo del clip: se salta o se repite según haga falta."""
@@ -135,7 +163,8 @@ class GrabadorActividad(threading.Thread):
             return                                     # el modelo va más rápido que fps_salida
         if t_cap - self._t_sig > 2.0:
             self._t_sig = t_cap                        # hueco largo (stream cortado): no rellenar con el frame repetido
-        img = self.dibujar(frame, estables, f"{hora_de(t_cap)} | nadadores: {len(estables)}", zonas)
+        img = self.dibujar(frame, estables, f"{hora_de(t_cap)} | nadadores: {len(estables)}", zonas) if self.anotado else frame
+        self._tiempos.write(f"{self._n},{hora_de(t_cap)},{t_cap:.3f}\n")
         while self._t_sig <= t_cap + 1e-6:             # el modelo va más lento: se repite para mantener la velocidad real
             self._writer.write(img)
             self._t_sig += 1.0 / self.fps_salida
@@ -147,15 +176,19 @@ class GrabadorActividad(threading.Thread):
             return
         self._writer.release()
         self._writer = None
+        if self._tiempos is not None:
+            self._tiempos.close()
+            self._tiempos = None
         self.clips += 1
         self.log(f"[grabador] clip guardado: {self._ruta.name} ({self._n} frames)")
         self._limitar_disco()
 
     def _limitar_disco(self):
-        clips = sorted(self.carpeta.glob("clip_*.mp4"), key=lambda p: p.stat().st_mtime)
+        clips = sorted((p for p in self.carpeta.glob("clip_*") if p.suffix in (".mp4", ".avi")), key=lambda p: p.stat().st_mtime)
         total = sum(p.stat().st_size for p in clips)
         while clips and total > self.max_gb * 1024 ** 3:
             viejo = clips.pop(0)
             total -= viejo.stat().st_size
             viejo.unlink(missing_ok=True)
+            viejo.with_suffix(".tiempos.csv").unlink(missing_ok=True)
             self.log(f"[grabador] disco lleno ({self.max_gb} GB): borré {viejo.name}")
