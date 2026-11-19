@@ -1,0 +1,33 @@
+# Backend + frontend + base de datos LOCAL, sin internet (para probar en la piscina sin Wi-Fi).
+# Se suma al compose de desarrollo; reemplaza la base de Supabase por un Postgres en tu PC:
+#
+#   docker compose -f docker-compose.dev.yml -f docker-compose.local.yml up backend frontend
+#
+# La IA NO se levanta acá: la corrés con Python y le decís BACKEND_URL=http://localhost:3001.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: safesplash
+      POSTGRES_PASSWORD: local
+      POSTGRES_DB: safesplash
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safesplash -d safesplash"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks: [backend]
+
+  backend:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # pisa el DATABASE_URL de Supabase que venga del .env
+      DATABASE_URL: postgresql://safesplash:local@db:5432/safesplash
+      DB_POOL_MAX: "10"
