@@ -388,6 +388,9 @@ def main():
     ap.add_argument("--margen-recorte", type=float, default=0.03, help="margen alrededor de los carriles (proporción)")
     ap.add_argument("--max-por-carril", type=int, default=1)
     ap.add_argument("--max-hueco", type=float, default=20.0, help="segundos que una identidad perdida sigue viva")
+    ap.add_argument("--identidad-por-track", action="store_true",
+                    help="comportamiento anterior: identidades por track de ByteTrack con re-enlace (por defecto, con carriles "
+                         "definidos, la identidad es el carril y no cambia en toda la sesión)")
     ap.add_argument("--backend-url", default=os.environ.get("BACKEND_URL"),
                     help="si se indica, manda las posiciones a la sesión activa del backend (por ejemplo http://backend:3001)")
     ap.add_argument("--sesion", default=os.environ.get("SESION_ID") or None,
@@ -432,7 +435,8 @@ def main():
         detector, tracker, crear_tracker = construir_real(args, activas)
         carriles = activas.carriles
 
-    gestor = GestorIdentidades(carriles=carriles, max_hueco_s=args.max_hueco, max_por_carril=args.max_por_carril)
+    gestor = GestorIdentidades(carriles=carriles, max_hueco_s=args.max_hueco, max_por_carril=args.max_por_carril,
+                                un_nadador_por_carril=not args.identidad_por_track)
     parar = threading.Event()
 
     def al_unirse(sesion):

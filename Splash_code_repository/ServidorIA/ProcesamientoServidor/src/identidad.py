@@ -14,6 +14,15 @@ traduce los IDs de ByteTrack a identidades estables, usando lo que sabemos de la
   * todo se mide en SEGUNDOS (timestamp de captura), no en frames, así que funciona igual
     con FPS bajos o irregulares (celular, frames descartados).
 
+MODO "UN NADADOR POR CARRIL" (el de por defecto cuando hay carriles definidos y max_por_carril == 1):
+  * la identidad ES el carril: hay una identidad por carril y no cambia en toda la sesión, pase lo que pase con los
+    IDs de ByteTrack (se pierda un rato, vuelva con otro ID, o desaparezca 2 minutos). Solo se reinician cuando se
+    cambian los carriles (otra sesión / otra calibración);
+  * una detección fuera de todos los carriles se ignora (banderines, gente en el borde): no crea identidades;
+  * si en un mismo carril hay varias cajas en un frame, se queda la más cercana a donde se esperaba al nadador (su
+    última posición + velocidad). Si hace más de `reanclar_s` que no se lo ve, no hay posición confiable y se queda la
+    de mayor confianza. Un "salto" de una sola caja lejos de lo esperado lo filtra después Trayectorias.
+
 Los carriles salen de zones.json: los polígonos cuyo nombre empieza con "lane" o "carril"
 (ver define_zones.py: --names lane4 lane5 lane6 blocks deck).
 
@@ -50,13 +59,15 @@ def _iou(a, b):
 
 class GestorIdentidades:
     def __init__(self, carriles=None, max_hueco_s=20.0, max_por_carril=1,
-                 iou_duplicado=0.5, gate_base=1.5, gate_por_s=2.0):
+                 iou_duplicado=0.5, gate_base=1.5, gate_por_s=2.0, un_nadador_por_carril=True, reanclar_s=3.0):
         """
         carriles        {nombre: [[x, y], ...]} polígonos de cada carril, o None.
         max_hueco_s     segundos máximos que una identidad perdida sigue "viva" para ser recuperada.
         max_por_carril  nadadores simultáneos esperados por carril.
         iou_duplicado   dos cajas del mismo carril que se solapan más que esto son el mismo nadador.
         gate_base/_por_s  radio de búsqueda para re-enlazar (en diagonales de caja; crece con el tiempo perdido).
+        un_nadador_por_carril  la identidad es el carril (ver arriba). Solo rige con carriles definidos y max_por_carril == 1.
+        reanclar_s      si hace más que esto que no se ve al nadador de un carril, no se usa su posición para elegir entre cajas.
         """
         self.carriles = {n: np.array(p, dtype=np.float32) for n, p in (carriles or {}).items()}
         self.max_hueco_s = max_hueco_s
@@ -64,7 +75,11 @@ class GestorIdentidades:
         self.iou_duplicado = iou_duplicado
         self.gate_base = gate_base
         self.gate_por_s = gate_por_s
+        self.un_nadador_por_carril = un_nadador_por_carril
+        self.reanclar_s = reanclar_s
 
+        self.fuera_de_carril = 0   # detecciones ignoradas por estar fuera de todos los carriles (solo en el modo por carril)
+        self._sid_de_carril = {}   # nombre de carril -> su identidad (modo por carril)
         self.estados = {}   # ID estable -> _Estado
         self.mapa = {}      # ID de ByteTrack -> ID estable
         self._siguiente = 1
@@ -79,6 +94,11 @@ class GestorIdentidades:
         self.carriles = {n: np.array(p, dtype=np.float32) for n, p in (carriles or {}).items()}
         self.estados.clear()
         self.mapa.clear()
+        self._sid_de_carril.clear()
+
+    @property
+    def _modo_carril(self):
+        return self.un_nadador_por_carril and self.max_por_carril == 1 and bool(self.carriles)
 
     # ---- utilidades ----
     def _carril_de(self, cx, cy):
@@ -131,11 +151,53 @@ class GestorIdentidades:
         return None
 
     # ---- API ----
+    def _update_por_carril(self, tracks, t):
+        """Una identidad por carril. De cada carril se queda UNA caja por frame: la más cercana a lo esperado."""
+        por_carril = {}
+        for fila in tracks:
+            x1, y1, x2, y2 = fila[:4]
+            centro = np.array([(x1 + x2) / 2, (y1 + y2) / 2])
+            carril = self._carril_de(*centro)
+            if carril is None:
+                self.fuera_de_carril += 1
+                continue
+            por_carril.setdefault(carril, []).append((fila, centro))
+
+        salida = []
+        for carril, cajas in por_carril.items():
+            sid = self._sid_de_carril.get(carril)
+            e = self.estados.get(sid) if sid is not None else None
+            if e is not None and t - e.t_ultimo <= self.reanclar_s:
+                dt = max(t - e.t_ultimo, 1e-3)
+                esperado = e.centro + e.vel * min(dt, 1.0)
+                fila, centro = min(cajas, key=lambda c: float(np.linalg.norm(c[1] - esperado)))
+            else:
+                fila, centro = max(cajas, key=lambda c: float(c[0][5]))     # sin posición confiable: la más segura
+            self.duplicados += len(cajas) - 1
+            x1, y1, x2, y2, tid, conf, cls = fila
+            diag = math.hypot(x2 - x1, y2 - y1)
+            if e is None:
+                sid = self._nueva(centro, diag, t, carril)
+                self._sid_de_carril[carril] = sid
+                e = self.estados[sid]
+            elif self.mapa.get(int(tid)) != sid:
+                self.reenlaces += 1          # otro ID de ByteTrack para el mismo nadador
+            self.mapa[int(tid)] = sid
+            dt = t - e.t_ultimo
+            if dt > 1e-3:
+                e.vel = 0.5 * e.vel + 0.5 * (centro - e.centro) / dt
+            e.centro, e.diag, e.t_ultimo, e.frames = centro, diag, t, e.frames + 1
+            e.carril = carril
+            salida.append([x1, y1, x2, y2, sid, conf, cls])
+        return np.array(salida) if salida else np.empty((0, 7))
+
     def update(self, tracks, t):
         tracks = np.asarray(tracks, dtype=float)
         if tracks.size == 0:
             return np.empty((0, 7))
         tracks = tracks.reshape(len(tracks), -1)[:, :7]
+        if self._modo_carril:
+            return self._update_por_carril(tracks, t)
 
         reclamados = set()
         filas = []
@@ -184,4 +246,5 @@ class GestorIdentidades:
 
     def resumen(self):
         return {"identidades": len(self.estados), "ids_bytetrack": len(self.mapa),
-                "reenlaces": self.reenlaces, "duplicados_descartados": self.duplicados}
+                "reenlaces": self.reenlaces, "duplicados_descartados": self.duplicados,
+                "fuera_de_carril": self.fuera_de_carril}
