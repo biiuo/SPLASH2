@@ -40,6 +40,7 @@ import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from enviador import EnviadorBackend  # noqa: E402
+from fantasmas import MapaFantasmas  # noqa: E402
 from identidad import GestorIdentidades  # noqa: E402
 from grabador import GrabadorActividad, hora_de  # noqa: E402
 from latido import PublicadorLatido  # noqa: E402
@@ -156,8 +157,11 @@ class Inferencia(threading.Thread):
     se mezclen los nadadores de la sesión anterior."""
 
     def __init__(self, captura, detector, tracker, gestor, zonas_activas, parar, on_resultado=None,
-                 debe_procesar=None, crear_tracker=None, on_frame=None):
+                 debe_procesar=None, crear_tracker=None, on_frame=None, fantasmas=None, ver_crudas=False):
         super().__init__(daemon=True, name="inferencia")
+        self.ver_crudas = ver_crudas     # dibuja detecciones y tracks crudos en la vista y en los clips (depuración)
+        self.ultimas_crudas = (np.empty((0, 6)), np.empty((0, 7)))
+        self.fantasmas = fantasmas  # MapaFantasmas o None: descarta detecciones fijas (reflejos)
         self.captura, self.detector, self.tracker = captura, detector, tracker
         self.gestor, self.zonas_activas, self.parar = gestor, zonas_activas, parar
         self.on_resultado = on_resultado
@@ -247,7 +251,11 @@ class Inferencia(threading.Thread):
                 zonas = self.zonas_activas.zonas if self.zonas_activas else None
                 if zonas is not None:
                     det, _ = zonas.split(det)
+                if self.fantasmas:
+                    self.fantasmas.observar(det, t_cap)
+                    det = self.fantasmas.filtrar(det)
                 tracks = self.tracker.update(det, frame)
+                self.ultimas_crudas = (det, np.asarray(tracks))
                 if len(tracks):     # sin tracks, reshape(0, -1) falla
                     for t in np.asarray(tracks).reshape(len(tracks), -1):
                         self.ids_bytetrack.add(int(t[4]))
@@ -257,7 +265,7 @@ class Inferencia(threading.Thread):
                 if self.on_resultado:
                     self.on_resultado(idx, t_cap, estables)
                 if self.on_frame:
-                    self.on_frame(t_cap, frame, estables)
+                    self.on_frame(t_cap, dibujar_crudas(frame.copy(), *self.ultimas_crudas) if self.ver_crudas else frame, estables)
         finally:
             self.terminado.set()
 
@@ -325,6 +333,19 @@ def construir_real(args, activas):
     return detector, tracker, crear_tracker
 
 
+def dibujar_crudas(vista, dets, tracks):
+    """Depuración (--ver-crudas): lo que ve el modelo ANTES de elegir nadador. Blanco = detecciones (con su confianza),
+    azul = tracks de ByteTrack (con su ID). Lo que la identidad por carril elige sigue en naranja."""
+    for d in np.asarray(dets).reshape(len(dets), -1) if len(dets) else []:
+        cv2.rectangle(vista, (int(d[0]), int(d[1])), (int(d[2]), int(d[3])), (255, 255, 255), 1)
+        if d.shape[0] > 4:
+            cv2.putText(vista, f"{d[4]:.2f}", (int(d[0]), int(d[3]) + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+    for t in np.asarray(tracks).reshape(len(tracks), -1) if len(tracks) else []:
+        cv2.rectangle(vista, (int(t[0]) - 2, int(t[1]) - 2), (int(t[2]) + 2, int(t[3]) + 2), (255, 120, 0), 1)
+        cv2.putText(vista, f"id{int(t[4])}", (int(t[2]) + 4, int(t[1]) + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 120, 0), 1)
+    return vista
+
+
 def dibujar(frame, estables, texto, zonas=None):
     """La vista de depuración: cajas con el id de cada nadador, las zonas (si se dan) y una línea de estado."""
     vista = frame.copy()
@@ -388,6 +409,23 @@ def main():
     ap.add_argument("--margen-recorte", type=float, default=0.03, help="margen alrededor de los carriles (proporción)")
     ap.add_argument("--max-por-carril", type=int, default=1)
     ap.add_argument("--max-hueco", type=float, default=20.0, help="segundos que una identidad perdida sigue viva")
+    ap.add_argument("--ver-crudas", action="store_true",
+                    help="depuración: dibuja las detecciones del modelo (blanco, con su confianza) y los tracks de ByteTrack (azul, con su ID) "
+                         "en la ventana y en los clips, para ver si el modelo ve al nadador aunque no sea el que se elige")
+    ap.add_argument("--aprender-fantasmas", type=float, default=0.0, metavar="SEG",
+                    help="con la piscina VACÍA y una sesión activa, aprende SEG segundos qué detecciones son fijas (un reflejo) "
+                         "y desde ahí las descarta; se guarda en --fantasmas")
+    ap.add_argument("--fantasmas", default=None, metavar="ARCHIVO",
+                    help="donde se guardan los fantasmas aprendidos (y de donde se cargan si no se aprende)")
+    ap.add_argument("--quieta-s", type=float, default=2.0,
+                    help="identidad por carril: una caja que se queda en la misma posición más de estos segundos está quieta "
+                         "(espuma, reflejo, nadador descansando) y pierde contra una que no lo está")
+    ap.add_argument("--radio-quieta", type=float, default=0.35,
+                    help="radio (en diagonales de caja) de 'la misma posición' para decidir si una caja está quieta")
+    ap.add_argument("--sin-rumbo", action="store_true",
+                    help="desactiva la regla del rumbo (ignorar cajas que quedan detrás del nadador respecto a hacia dónde va)")
+    ap.add_argument("--rumbo-s", type=float, default=6.0,
+                    help="segundos máximos sin ver al nadador durante los que se sigue ignorando lo que queda detrás de él")
     ap.add_argument("--identidad-por-track", action="store_true",
                     help="comportamiento anterior: identidades por track de ByteTrack con re-enlace (por defecto, con carriles "
                          "definidos, la identidad es el carril y no cambia en toda la sesión)")
@@ -436,7 +474,9 @@ def main():
         carriles = activas.carriles
 
     gestor = GestorIdentidades(carriles=carriles, max_hueco_s=args.max_hueco, max_por_carril=args.max_por_carril,
-                                un_nadador_por_carril=not args.identidad_por_track)
+                                un_nadador_por_carril=not args.identidad_por_track,
+                                quieta_s=args.quieta_s, radio_quieta=args.radio_quieta,
+                                usar_rumbo=not args.sin_rumbo, rumbo_s=args.rumbo_s)
     parar = threading.Event()
 
     def al_unirse(sesion):
@@ -499,7 +539,9 @@ def main():
     debe_procesar = (lambda: enviador.en_sesion) if enviador and not args.sesion else None
     inferencia = Inferencia(captura, detector, tracker, gestor, activas, parar, on_resultado=al_resultado,
                             debe_procesar=debe_procesar, crear_tracker=crear_tracker,
-                            on_frame=al_frame if grabador else None)
+                            on_frame=al_frame if grabador else None,
+                            ver_crudas=args.ver_crudas,
+                            fantasmas=MapaFantasmas(args.aprender_fantasmas, args.fantasmas) if (args.aprender_fantasmas > 0 or args.fantasmas) else None)
 
     print(f"Modo: {modo} | fuente: {fuente} | {ancho}x{alto}")
     t0 = time.time()
@@ -561,6 +603,8 @@ def main():
                 if grabador and grabador.grabando:
                     partes.append("REC")
                 vista = dibujar(frame, est, " | ".join(partes), inferencia.zonas_vista if mostrar_zonas[0] else None)
+                if args.ver_crudas:
+                    dibujar_crudas(vista, *inferencia.ultimas_crudas)
                 cv2.putText(vista, f"ahora {hora_de(ahora)}", (10, vista.shape[0] - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                             (0, 255, 255), 2)
                 if en_vivo:
