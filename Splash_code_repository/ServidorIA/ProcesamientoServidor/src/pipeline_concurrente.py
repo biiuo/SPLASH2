@@ -439,6 +439,9 @@ def main():
                     help="cada cuántos segundos dejar el último frame de la cámara en el backend, para calibrar desde la web (0 = no mandar)")
     ap.add_argument("--guardar-video", metavar="CARPETA", default=os.environ.get("GUARDAR_VIDEO") or None,
                     help="graba clips en esta carpeta SOLO mientras hay nadadores (sin parar el stream)")
+    ap.add_argument("--video-continuo", action="store_true",
+                    help="con --guardar-video: un solo clip por sesión con TODO lo procesado (haya o no nadadores), sin cortarlo "
+                         "(tope de 8 h por clip); en vez de clips cortos solo con actividad")
     ap.add_argument("--video-pre-s", type=float, default=3.0, help="segundos de video ANTES de la primera detección")
     ap.add_argument("--video-post-s", type=float, default=10.0, help="segundos que se sigue grabando tras la última detección")
     ap.add_argument("--video-max-min", type=float, default=10.0, help="duración máxima de un clip (minutos); luego abre otro")
@@ -526,8 +529,8 @@ def main():
     grabador = None
     if args.guardar_video:
         grabador = GrabadorActividad(args.guardar_video, dibujar, pre_s=args.video_pre_s, post_s=args.video_post_s,
-                                     max_clip_s=args.video_max_min * 60, max_gb=args.video_max_gb,
-                                     fps_salida=args.video_fps)
+                                     max_clip_s=(8 * 3600 if args.video_continuo else args.video_max_min * 60), max_gb=args.video_max_gb,
+                                     fps_salida=args.video_fps, continuo=args.video_continuo)
         grabador.start()
         print(f"Grabando clips solo con nadadores en: {args.guardar_video} "
               f"({args.video_pre_s:g} s antes, {args.video_post_s:g} s después, tope {args.video_max_gb:g} GB)")

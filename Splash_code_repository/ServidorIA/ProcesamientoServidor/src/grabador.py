@@ -20,6 +20,9 @@ unos segundos DESPUÉS de la última.
     velocidad real, aunque el ritmo de procesamiento cambie.
   * Un tope de disco (`max_gb`) borra los clips más viejos.
 
+Con continuo=True (--video-continuo) no se espera a un nadador: se graba TODO lo que se procesa, de corrido, en un solo clip
+(solo se corta al llegar a `max_clip_s`, o cuando el stream se calla porque terminó la sesión). Una sesión = un clip.
+
 Solo usa OpenCV y la biblioteca estándar.
 """
 import collections
@@ -42,7 +45,7 @@ def hora_de(t_cap):
 
 class GrabadorActividad(threading.Thread):
     def __init__(self, carpeta, dibujar, pre_s=3.0, post_s=10.0, max_clip_s=600.0, max_gb=5.0, max_pre_frames=60,
-                 cola_max=120, fps_salida=10.0, log=print):
+                 cola_max=120, fps_salida=10.0, continuo=False, log=print):
         """dibujar(frame, estables, texto, zonas) -> imagen anotada (la misma que usa la ventana de depuración)."""
         super().__init__(daemon=True, name="grabador")
         self.carpeta = Path(carpeta)
@@ -63,6 +66,7 @@ class GrabadorActividad(threading.Thread):
         self._visto = 0.0           # hora real de la última vez que llegó un frame (para cerrar si el stream se calla)
         self._n = 0
         self.fps_salida = fps_salida
+        self.continuo = continuo     # un solo clip con TODO lo que se procesa (una sesión = un clip), haya o no nadadores
         self._t_sig = 0.0          # t_cap que le toca al próximo frame del clip
         self.clips = 0
         self.descartados = 0
@@ -103,7 +107,7 @@ class GrabadorActividad(threading.Thread):
 
     def _procesar(self, t_cap, frame, estables, zonas):
         self._visto = time.time()
-        hay = len(estables) > 0
+        hay = self.continuo or len(estables) > 0
         if self._writer is None:
             self._previo.append((t_cap, frame, estables, zonas))
             while self._previo and t_cap - self._previo[0][0] > self.pre_s:
