@@ -422,10 +422,12 @@ def main():
                          "(espuma, reflejo, nadador descansando) y pierde contra una que no lo está")
     ap.add_argument("--radio-quieta", type=float, default=0.35,
                     help="radio (en diagonales de caja) de 'la misma posición' para decidir si una caja está quieta")
-    ap.add_argument("--sin-rumbo", action="store_true",
-                    help="desactiva la regla del rumbo (ignorar cajas que quedan detrás del nadador respecto a hacia dónde va)")
+    ap.add_argument("--rumbo", action="store_true",
+                    help="activa la regla del rumbo (ignorar cajas que quedan detrás del nadador respecto a hacia dónde va, o fuera de su "
+                         "alcance). Apagada por defecto: en las pruebas con video grabado no hizo falta y deja más tramos estimados; "
+                         "úsala si la identidad se pega a un fantasma en la vuelta")
     ap.add_argument("--rumbo-s", type=float, default=6.0,
-                    help="segundos máximos sin ver al nadador durante los que se sigue ignorando lo que queda detrás de él")
+                    help="con --rumbo: segundos máximos sin ver al nadador durante los que se sigue ignorando lo que queda detrás de él")
     ap.add_argument("--identidad-por-track", action="store_true",
                     help="comportamiento anterior: identidades por track de ByteTrack con re-enlace (por defecto, con carriles "
                          "definidos, la identidad es el carril y no cambia en toda la sesión)")
@@ -476,7 +478,7 @@ def main():
     gestor = GestorIdentidades(carriles=carriles, max_hueco_s=args.max_hueco, max_por_carril=args.max_por_carril,
                                 un_nadador_por_carril=not args.identidad_por_track,
                                 quieta_s=args.quieta_s, radio_quieta=args.radio_quieta,
-                                usar_rumbo=not args.sin_rumbo, rumbo_s=args.rumbo_s)
+                                usar_rumbo=args.rumbo, rumbo_s=args.rumbo_s)
     parar = threading.Event()
 
     def al_unirse(sesion):
