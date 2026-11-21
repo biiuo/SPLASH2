@@ -10,8 +10,10 @@
 //    marca donde estaba o, si el motor detectó que retomó el nado antes de cruzar, ese instante (`fin_descanso`).
 //  - Si la sesión SIGUE en curso y pasan más de 30 s desde el último cruce, también es descanso hasta ahora. En una
 //    sesión terminada no se dibuja: no se sabe si descansó o ya se había ido.
-//  - Una serie por carril y por identidad del rastreador: si en un carril hubo dos rastros a la vez (un salto de
-//    identidad, un fantasma), se ven como dos líneas y no se mezclan.
+//  - Vista detallada: una serie por carril y por identidad del rastreador (si en un carril hubo dos rastros a la vez, un
+//    salto de identidad o un fantasma, se ven como dos líneas). Vista unida (`unirRastros`): una serie por carril, con los
+//    tramos de todos sus rastros en orden de tiempo; sirve cuando hay un solo nadador por carril y el rastreador le fue
+//    cambiando de identidad.
 //  - Un tramo más rápido que `VELOCIDAD_MAX_CREIBLE_MS` se marca como sospechoso: casi siempre es un salto del rastreo,
 //    no natación.
 import type { EventoGuardado, TramoGuardado } from './tipos'
@@ -25,7 +27,7 @@ export type TramoDeSerie = { desde: number; hasta: number; v: number; descanso: 
 
 export type SerieCarril = {
   carril: number
-  /** Identidad del rastreador (null: filas viejas sin identidad). */
+  /** Identidad del rastreador (null: filas viejas sin identidad, o serie unida de todos los rastros del carril). */
   identidad: number | null
   /** Los tramos de la serie en orden: velocidad constante en cada uno (descanso = 0). Tiempos en ms (epoch). */
   segmentos: TramoDeSerie[]
@@ -39,22 +41,24 @@ type Opciones = {
   descanso_s?: number
   /** true = la sesión sigue en curso: si pasan más de 30 s del último cruce, el descanso se extiende hasta `hasta`. */
   enCurso?: boolean
+  /** true = una serie por carril con los tramos de todas sus identidades (un nadador por carril). */
+  unirRastros?: boolean
 }
 
 export function serieDeCarril(
   carril: number,
-  identidad: number | null,
+  identidad: number | null | 'todas',
   tramos: TramoGuardado[],
   eventos: EventoGuardado[],
   { hasta, descanso_s = DESCANSO_S, enCurso = true }: Opciones,
 ): SerieCarril {
   const umbral = descanso_s * 1000
   const mios = tramos
-    .filter((t) => t.carril === carril && (t.identidad ?? null) === identidad)
+    .filter((t) => t.carril === carril && (identidad === 'todas' || (t.identidad ?? null) === identidad))
     .map((t) => ({ ...t, ini: Date.parse(t.t_inicio), fin: Date.parse(t.t_fin) }))
     .sort((a, b) => a.ini - b.ini || a.fin - b.fin)
   const retomas = eventos
-    .filter((e) => e.carril === carril && (e.identidad ?? null) === identidad && e.tipo === 'fin_descanso')
+    .filter((e) => e.carril === carril && (identidad === 'todas' || (e.identidad ?? null) === identidad) && e.tipo === 'fin_descanso')
     .map((e) => Date.parse(e.ts_captura))
     .sort((a, b) => a - b)
 
@@ -78,11 +82,14 @@ export function serieDeCarril(
   const ultimo = mios.length ? mios[mios.length - 1].fin : null
   if (enCurso && ultimo !== null && hasta - ultimo > umbral) segmentos.push({ desde: ultimo, hasta, v: 0, descanso: true, sospechoso: false })
 
-  return { carril, identidad, segmentos, puntos: segmentos.flatMap((s) => [{ t: s.desde, v: s.v }, { t: s.hasta, v: s.v }]) }
+  return { carril, identidad: identidad === 'todas' ? null : identidad, segmentos, puntos: segmentos.flatMap((s) => [{ t: s.desde, v: s.v }, { t: s.hasta, v: s.v }]) }
 }
 
 /** Una serie por carril e identidad que tenga tramos, ordenadas por carril y por cuándo apareció cada una. */
 export function seriesDeVelocidad(tramos: TramoGuardado[], eventos: EventoGuardado[], opciones: Opciones): SerieCarril[] {
+  if (opciones.unirRastros) {
+    return [...new Set(tramos.map((t) => t.carril))].sort((a, b) => a - b).map((c) => serieDeCarril(c, 'todas', tramos, eventos, opciones))
+  }
   const claves = new Map<string, { carril: number; identidad: number | null; primero: number }>()
   for (const t of tramos) {
     const identidad = t.identidad ?? null

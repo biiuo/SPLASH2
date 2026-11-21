@@ -33,6 +33,8 @@ export function DetalleSesion({ sesion, carrilInicial }: { sesion: ResumenSesion
   const [carril, setCarril] = useState<number | null>(
     carrilInicial ?? (carriles.find((c) => c.tramos > 0) ?? carriles[0])?.carril ?? null,
   )
+  // la gráfica de velocidad: de este carril, o de todos los de la sesión juntos (como se ve en vivo). null = automático
+  const [vistaGrafica, setVistaGrafica] = useState<'carril' | 'todos' | null>(null)
   const [carga, setCarga] = useState<{ id: string; resultados: ResultadosSesion | null; problema: string | null; ahora: number } | null>(null)
   const resultados = carga?.id === sesion.id ? carga.resultados : null
   const problema = carga?.id === sesion.id ? carga.problema : null
@@ -78,6 +80,13 @@ export function DetalleSesion({ sesion, carrilInicial }: { sesion: ResumenSesion
   const t0 = Date.parse(sesion.inicio)
   const largos = datos.largos
   const n = largos.length
+  // carriles con tramos en toda la sesión (para el entrenador son todos los que midió; el nadador solo ve los suyos)
+  const carrilesConTramos = [...new Set(resultados.tramos.map((t) => t.carril))].sort((a, b) => a - b)
+  const hayVariosCarriles = carrilesConTramos.length > 1
+  const verTodos = hayVariosCarriles && (vistaGrafica ?? 'todos') === 'todos'
+  const tramosGrafica = verTodos ? resultados.tramos : datos.tramos
+  const eventosGrafica = verTodos ? resultados.eventos : datos.eventos
+  const nadadoresGrafica = verTodos ? Object.fromEntries(carriles.map((c) => [c.carril, c.nadador])) : { [carril as number]: nadador }
 
   return (
     <div className="flex flex-col gap-6">
@@ -237,15 +246,28 @@ export function DetalleSesion({ sesion, carrilInicial }: { sesion: ResumenSesion
       )}
 
       {/* velocidad de cada tramo a lo largo del tiempo, con el descanso en 0 (sale de los tramos: sirve aunque no haya largos completos) */}
-      {datos.tramos.length > 0 && (
+      {tramosGrafica.length > 0 && (
         <Tarjeta>
+          {hayVariosCarriles && (
+            <div className="mb-3 flex justify-end">
+              <select
+                value={verTodos ? 'todos' : 'carril'}
+                onChange={(e) => setVistaGrafica(e.target.value === 'todos' ? 'todos' : 'carril')}
+                className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-sm"
+                aria-label="Qué carriles mostrar en la gráfica de velocidad"
+              >
+                <option value="todos">Todos los carriles ({carrilesConTramos.join(', ')})</option>
+                <option value="carril">Solo carril {carril}{nadador ? ` · ${nadador}` : ''}</option>
+              </select>
+            </div>
+          )}
           <GraficaVelocidad
-            tramos={datos.tramos}
-            eventos={datos.eventos}
+            tramos={tramosGrafica}
+            eventos={eventosGrafica}
             inicio={t0}
             hasta={sesion.fin ? Date.parse(sesion.fin) : ahora}
             enCurso={sesion.estado === 'activa'}
-            nadadores={{ [carril as number]: nadador }}
+            nadadores={nadadoresGrafica}
           />
         </Tarjeta>
       )}

@@ -9,6 +9,10 @@ detecta (irregular: a veces 10 veces por segundo, a veces ninguna) en una posici
   * si no se detectó (banderines, salpicaduras, un frame descartado), la identidad NO desaparece: se le asigna una
     posición ESTIMADA y se marca como tal. Se extrapola con su última velocidad hasta `extrapolar_max_s`; pasado ese
     tiempo se mantiene la última posición. Se deja de estimar cuando la identidad lleva `max_estimado_s` perdida.
+    La extrapolación nunca usa una velocidad mayor que la creíble (`salto_max_px_s`, la misma del filtro de saltos): un
+    salto de la identidad dejaba una "velocidad" de 1500 px/s y la estimación salía volando fuera de la imagen. Y una
+    posición estimada que cae fuera del carril no se usa: se mantiene la última medida (un nadador perdido junto a la
+    pared, tapado por la baranda, está quieto allí, no sigue de largo).
 
 La posición estimada nunca se hace pasar por medida: el backend la marca como `observado: false` en los eventos que
 dependen de ella y no la usa para decidir si el nadador está descansando.
@@ -23,6 +27,7 @@ Todo se mide con el tiempo de captura de los frames (segundos), igual que el res
 """
 import re
 
+import cv2
 import numpy as np
 
 
@@ -51,6 +56,15 @@ class Trayectorias:
         self.sin_carril = 0    # identidades que no se pudieron enviar por no tener carril
         self.saltos_descartados = 0   # detecciones tratadas como "no detectado" por el filtro de saltos
         self.saltos_confirmados = 0   # saltos que se mantuvieron y se aceptaron
+        self.estimadas_recortadas = 0  # posiciones estimadas que caían fuera del carril y se dejaron en la última medida
+
+    @staticmethod
+    def _en_carril(gestor, carril, pos):
+        """True si `pos` está dentro del polígono del carril (o si no hay polígono con qué comparar)."""
+        poly = getattr(gestor, "carriles", {}).get(carril)
+        if poly is None:
+            return True
+        return cv2.pointPolygonTest(np.asarray(poly, dtype=np.float32), (float(pos[0]), float(pos[1])), False) >= 0
 
     def _lejos(self, a, b, dt):
         return np.linalg.norm(a - b) > self.salto_margen_px + self.salto_max_px_s * max(dt, 0.0)
@@ -98,6 +112,10 @@ class Trayectorias:
                 continue
 
             centro, t_det, vel = self._ultimo[sid]
+            if self.salto_max_px_s > 0:
+                rapidez = float(np.linalg.norm(vel))
+                if rapidez > self.salto_max_px_s:
+                    vel = vel * (self.salto_max_px_s / rapidez)
             if sid in detectados:
                 pos, estimada = centro, False
             else:
@@ -105,6 +123,9 @@ class Trayectorias:
                 if perdido > self.max_estimado_s:
                     continue
                 pos, estimada = centro + vel * min(perdido, self.extrapolar_max_s), True
+                if not self._en_carril(gestor, estado.carril, pos):
+                    pos = centro
+                    self.estimadas_recortadas += 1
 
             tick = self._proximo.get(sid, t)
             tick += self.periodo

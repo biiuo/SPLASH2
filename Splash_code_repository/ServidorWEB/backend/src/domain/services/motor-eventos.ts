@@ -5,7 +5,8 @@
  *  - El instante de un cruce se interpola entre dos muestras y se confirma al alejarse `histeresis_m` de la marca.
  *  - Los extremos (0 y largo) cuentan como llegada a la pared a `margen_extremo_m` de ella, o donde diga la calibración
  *    (`llegada_inicio_m` / `llegada_fin_m`) si la cámara no ve hasta la pared.
- *  - Un evento es `observado: false` (inferido) si ocurrió en un hueco de muestras o con una posición estimada.
+ *  - Un evento es `observado: false` (inferido) si ocurrió en un hueco de muestras o entre dos posiciones estimadas (si una de las dos
+ *    muestras que enmarcan el cruce es una detección real, es observado).
  */
 
 export type TipoEventoDetectado = 'cruce_nodo' | 'viraje' | 'inicio_descanso' | 'fin_descanso'
@@ -283,7 +284,10 @@ export class MotorEventos {
   private cruces(e: EstadoNadador, previa: Muestra, m: Muestra, salida: ResultadoMotor): void {
     const huecoMs = this.config.hueco_max_s * 1000
     const enHueco = m.t - previa.t > huecoMs
-    const sinVer = enHueco || !!previa.estimada || !!m.estimada
+    // Inferido = hubo un hueco largo entre las dos muestras, o LAS DOS son estimadas. Si al menos una de las dos que enmarcan
+    // el cruce es una detección real, el cruce se interpoló a menos de un periodo de envío (~0,33 s) de una detección y
+    // cuenta como observado.
+    const sinVer = enHueco || (!!previa.estimada && !!m.estimada)
     const pendientes: EventoDetectado[] = []
 
     for (const u of this.umbrales) {

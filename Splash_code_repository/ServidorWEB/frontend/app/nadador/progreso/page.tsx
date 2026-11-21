@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { ProgresoObjetivo } from '@/components/entrenador/progreso-objetivo'
 import { api } from '@/lib/api'
+import { useCuenta } from '@/lib/cuenta'
+import { descargarPdf } from '@/lib/pdf-reporte'
 import { cumplimiento } from '@/lib/objetivos'
 import type { Objetivo } from '@/lib/tipos'
 
@@ -54,6 +56,41 @@ export default function MiProgreso() {
   )
   const t = totales(enRango)
   const conVelocidad = enRango.filter((f) => f.velocidad_media_ms !== null)
+  const nombre = useCuenta().usuario?.nombre ?? null
+
+  /** Mi progreso del período, en PDF: indicadores, evolución de la velocidad sesión a sesión y la tabla de sesiones. */
+  function descargarMiPdf() {
+    const num2 = (v: number | null) => (v === null ? '—' : v.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    const textoPeriodo = periodo === 'personalizado' ? `${desde} a ${hasta}` : `últimos ${periodo} días`
+    descargarPdf(`safesplash_mi_progreso_${aDia(new Date())}.pdf`, {
+      titulo: nombre ? `Mi progreso · ${nombre}` : 'Mi progreso · SafeSplash',
+      subtitulo: `Período: ${textoPeriodo} · solo sesiones finalizadas`,
+      kpis: [
+        { etiqueta: 'Sesiones', valor: String(t.sesiones) },
+        { etiqueta: 'Distancia total', valor: formatearMetros(t.distancia_m) },
+        { etiqueta: 'Velocidad promedio', valor: t.velocidad_media_ms ? `${num2(t.velocidad_media_ms)} m/s` : '—' },
+        { etiqueta: 'Mejor velocidad', valor: t.velocidad_max_ms ? `${num2(t.velocidad_max_ms)} m/s` : '—' },
+        { etiqueta: 'Largos', valor: String(t.largos) },
+      ],
+      grafica: {
+        titulo: 'Evolución de la velocidad promedio por sesión',
+        etiquetaY: 'm/s',
+        puntos: conVelocidad.map((f) => ({ x: Date.parse(f.sesion.inicio), y: f.velocidad_media_ms as number })),
+        marcasX: conVelocidad
+          .filter((_, i) => i % Math.max(1, Math.ceil(conVelocidad.length / 6)) === 0)
+          .map((f) => ({ x: Date.parse(f.sesion.inicio), texto: diaCorto(Date.parse(f.sesion.inicio)) })),
+      },
+      tablas: [
+        {
+          titulo: 'Mis sesiones',
+          columnas: [{ texto: 'Fecha', peso: 1.8 }, { texto: 'Hora', peso: 1.1 }, { texto: 'Duración', peso: 1.2, alinear: 'der' }, { texto: 'Distancia', peso: 1.3, alinear: 'der' }, { texto: 'Vel. media (m/s)', peso: 1.5, alinear: 'der' }, { texto: 'Vel. máx. (m/s)', peso: 1.5, alinear: 'der' }, { texto: 'Largos', peso: 0.9, alinear: 'der' }, { texto: 'Mejor largo', peso: 1.3, alinear: 'der' }],
+          filas: enRango.map((f) => [fechaCorta(f.sesion.inicio), horaCorta(f.sesion.inicio), f.duracion_s === null ? '—' : formatearDuracion(f.duracion_s * 1000), formatearMetros(f.distancia_m), num2(f.velocidad_media_ms), num2(f.velocidad_max_ms), String(f.largos), formatearSegundos(f.mejor_largo_s)]),
+          vacio: 'No hay sesiones finalizadas en este período.',
+        },
+      ],
+      notas: ['Las mediciones salen de la detección automática del sistema; en algún momento puede no verse al nadador (por ejemplo, tapado por la baranda del borde) y esa parte se estima.'],
+    })
+  }
 
   // distancia por día (hasta ~5 semanas) o por semana (lunes a domingo)
   const dias = (rango[1] - rango[0]) / DIA
@@ -100,6 +137,7 @@ export default function MiProgreso() {
               </button>
             ))}
           </div>
+          <button onClick={descargarMiPdf} disabled={!filas || enRango.length === 0} className={`${BOTON.secundario} sm:ml-auto`}>Descargar PDF</button>
           {periodo === 'personalizado' && (
             <div className="flex flex-wrap gap-3">
               <label className="text-sm text-[#64748B]">Desde<input type="date" value={desde} max={hasta} onChange={(e) => { setAhora(Date.now()); setDesde(e.target.value) }} className={CAMPO} /></label>

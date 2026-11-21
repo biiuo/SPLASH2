@@ -6,6 +6,7 @@ Splash_code_repository/ServidorIA/ProcesamientoServidor/modelo/datos/
 *.zip
 *.mp4
 *.avi
+*mkv
 *.mov
 *.onnx
 *.tflite
@@ -52,7 +53,7 @@ mediamtx*
 
 # Detecciones grabadas y resultados de barridos (se regeneran)
 *.npz
-resultados*.csv
+*.csv
 
 # Generados por herramientas
 next-env.d.ts
