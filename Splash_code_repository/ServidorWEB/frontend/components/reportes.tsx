@@ -9,6 +9,7 @@ import { Encabezado } from '@/components/nadador/shell'
 import { Aviso, BOTON, Kpi, Tarjeta } from '@/components/nadador/ui'
 import { ErrorApi, api } from '@/lib/api'
 import { descargarTexto, formatearMetros, formatearVel } from '@/lib/largos'
+import { type ReportePdf, descargarPdf } from '@/lib/pdf-reporte'
 import type { ResumenSesion } from '@/lib/tipos'
 
 const DIA = 24 * 60 * 60 * 1000
@@ -20,6 +21,10 @@ const semanaDe = (t: number) => {
 const diaCorto = (t: number) => new Date(t).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
 
 type Periodo = '30' | '90' | '365' | 'todo'
+const TEXTO_PERIODO: Record<Periodo, string> = { '30': 'últimos 30 días', '90': 'últimos 3 meses', '365': 'último año', todo: 'todo el historial' }
+const NOTA_ESTIMADOS = '«Estimado»: en algún momento no se veía al nadador (por ejemplo, tapado por la baranda del borde), así que esa parte del tramo es una estimación y no una medición confirmada.'
+const hoy = () => new Date().toISOString().slice(0, 10)
+const num2 = (v: number | null) => (v === null ? '—' : v.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
 /**
  * Reportes: sesiones por período, nadadores más activos, rendimiento y exportación (grupal e individual). Usa las
@@ -100,6 +105,90 @@ export function Reportes({ bajada }: { bajada: string }) {
     descargarTexto(`safesplash_${elegido.nombre.replace(/\s+/g, '_')}_${periodo}_${new Date().toISOString().slice(0, 10)}.csv`, filas.join('\n') + '\n', 'text/csv')
   }
 
+  /** El mismo reporte individual, en PDF: indicadores, evolución de la velocidad sesión a sesión y la tabla de sesiones. */
+  function exportarIndividualPdf() {
+    const elegido = ranking.find((r) => r.clave === individual)
+    if (!elegido) return
+    const filas: { t: number; fila: string[]; v: number | null; metros: number; vmax: number | null; largos: number }[] = []
+    for (const s of [...enPeriodo].sort((a, b) => a.inicio.localeCompare(b.inicio)))
+      for (const c of s.por_carril) {
+        if ((c.usuario_id ?? `nombre:${c.nadador}`) !== elegido.clave) continue
+        const t = Date.parse(s.inicio)
+        filas.push({
+          t,
+          v: c.velocidad_media_ms,
+          metros: c.distancia_m,
+          vmax: c.velocidad_max_ms,
+          largos: c.largos,
+          fila: [new Date(t).toLocaleDateString('es-CO'), new Date(t).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false }), String(c.carril), formatearMetros(c.distancia_m), num2(c.velocidad_media_ms), num2(c.velocidad_max_ms), String(c.largos), c.mejor_largo_s === null ? '—' : `${c.mejor_largo_s.toFixed(1)} s`, `${c.tramos_estimados}/${c.tramos}`],
+        })
+      }
+    const conV = filas.filter((f) => f.v !== null)
+    const reporte: ReportePdf = {
+      titulo: `Reporte de rendimiento · ${elegido.nombre}`,
+      subtitulo: `Período: ${TEXTO_PERIODO[periodo]} · ${elegido.sesiones.size} ${elegido.sesiones.size === 1 ? 'sesión' : 'sesiones'}`,
+      kpis: [
+        { etiqueta: 'Sesiones', valor: String(elegido.sesiones.size) },
+        { etiqueta: 'Distancia total', valor: formatearMetros(elegido.metros) },
+        { etiqueta: 'Velocidad promedio', valor: elegido.segundos > 0 ? `${num2(elegido.metros / elegido.segundos)} m/s` : '—' },
+        { etiqueta: 'Mejor velocidad', valor: elegido.vmax === null ? '—' : `${num2(elegido.vmax)} m/s` },
+        { etiqueta: 'Largos', valor: String(elegido.largos) },
+      ],
+      grafica: {
+        titulo: 'Evolución de la velocidad promedio por sesión',
+        etiquetaY: 'm/s',
+        puntos: conV.map((f) => ({ x: f.t, y: f.v as number })),
+        marcasX: conV.filter((_, i) => i % Math.max(1, Math.ceil(conV.length / 6)) === 0).map((f) => ({ x: f.t, texto: diaCorto(f.t) })),
+      },
+      tablas: [
+        {
+          titulo: 'Sesiones',
+          columnas: [{ texto: 'Fecha', peso: 1.7 }, { texto: 'Hora', peso: 1.1 }, { texto: 'Carril', peso: 0.9, alinear: 'der' }, { texto: 'Distancia', peso: 1.3, alinear: 'der' }, { texto: 'Vel. media (m/s)', peso: 1.5, alinear: 'der' }, { texto: 'Vel. máx. (m/s)', peso: 1.5, alinear: 'der' }, { texto: 'Largos', peso: 0.9, alinear: 'der' }, { texto: 'Mejor largo', peso: 1.3, alinear: 'der' }, { texto: 'Tramos est.', peso: 1.2, alinear: 'der' }],
+          filas: filas.map((f) => f.fila),
+          vacio: 'Este nadador no tiene sesiones en el período.',
+        },
+      ],
+      notas: [NOTA_ESTIMADOS, '«Tramos est.» = tramos estimados / tramos medidos en esa sesión.'],
+    }
+    descargarPdf(`safesplash_${elegido.nombre.replace(/\s+/g, '_')}_${periodo}_${hoy()}.pdf`, reporte)
+  }
+
+  /** El reporte del grupo (o de todos los nadadores que ves) en PDF: indicadores, evolución semanal y ranking. */
+  function exportarGrupalPdf() {
+    const conV = semanas.filter(([, x]) => x.segundos > 0)
+    const reporte: ReportePdf = {
+      titulo: 'Reporte de rendimiento · SafeSplash',
+      subtitulo: `Período: ${TEXTO_PERIODO[periodo]} · ${enPeriodo.length} ${enPeriodo.length === 1 ? 'sesión' : 'sesiones'} · ${ranking.length} ${ranking.length === 1 ? 'nadador' : 'nadadores'}`,
+      kpis: [
+        { etiqueta: 'Sesiones', valor: String(enPeriodo.length) },
+        { etiqueta: 'Distancia total', valor: formatearMetros(metros) },
+        { etiqueta: 'Velocidad promedio', valor: vMedia ? `${num2(vMedia)} m/s` : '—' },
+        { etiqueta: 'Nadadores activos', valor: String(ranking.length) },
+      ],
+      grafica: {
+        titulo: 'Evolución del rendimiento: velocidad media por semana',
+        etiquetaY: 'm/s',
+        puntos: conV.map(([k, x]) => ({ x: k, y: x.metros / x.segundos })),
+        marcasX: conV.filter((_, i) => i % Math.max(1, Math.ceil(conV.length / 6)) === 0).map(([k]) => ({ x: k, texto: diaCorto(k) })),
+      },
+      tablas: [
+        {
+          titulo: 'Nadadores (ordenados por distancia)',
+          columnas: [{ texto: '#', peso: 0.5 }, { texto: 'Nadador', peso: 3 }, { texto: 'Sesiones', peso: 1.2, alinear: 'der' }, { texto: 'Distancia', peso: 1.4, alinear: 'der' }, { texto: 'Vel. media (m/s)', peso: 1.6, alinear: 'der' }, { texto: 'Mejor vel. (m/s)', peso: 1.6, alinear: 'der' }, { texto: 'Largos', peso: 1, alinear: 'der' }],
+          filas: ranking.map((r, i) => [String(i + 1), r.nombre, String(r.sesiones.size), formatearMetros(r.metros), num2(r.segundos > 0 ? r.metros / r.segundos : null), num2(r.vmax), String(r.largos)]),
+          vacio: 'Sin datos en el período.',
+        },
+        {
+          titulo: 'Sesiones por semana',
+          columnas: [{ texto: 'Semana del', peso: 2 }, { texto: 'Sesiones', peso: 1, alinear: 'der' }, { texto: 'Distancia', peso: 1.4, alinear: 'der' }, { texto: 'Vel. media (m/s)', peso: 1.6, alinear: 'der' }],
+          filas: semanas.map(([k, x]) => [diaCorto(k), String(x.sesiones), formatearMetros(x.metros), num2(x.segundos > 0 ? x.metros / x.segundos : null)]),
+        },
+      ],
+      notas: [NOTA_ESTIMADOS],
+    }
+    descargarPdf(`safesplash_reporte_${periodo}_${hoy()}.pdf`, reporte)
+  }
+
   function exportar() {
     const esc = (v: string) => (/[",\n;]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
     const filas = [['nadador', 'sesiones', 'distancia_m', 'velocidad_media_ms', 'velocidad_max_ms', 'largos'].join(',')]
@@ -112,7 +201,12 @@ export function Reportes({ bajada }: { bajada: string }) {
       <Encabezado
         titulo="Reportes y estadísticas"
         bajada={bajada}
-        accion={<button onClick={exportar} disabled={!ranking.length} className={BOTON.secundario}><Download className="size-4" /> Exportar reporte grupal (.csv)</button>}
+        accion={
+          <div className="flex flex-wrap gap-2">
+            <button onClick={exportarGrupalPdf} disabled={!ranking.length} className={BOTON.primario}><Download className="size-4" /> Exportar reporte grupal (.pdf)</button>
+            <button onClick={exportar} disabled={!ranking.length} className={BOTON.secundario}><Download className="size-4" /> (.csv)</button>
+          </div>
+        }
       />
       <Tarjeta>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Período">
@@ -154,13 +248,14 @@ export function Reportes({ bajada }: { bajada: string }) {
         </div>
       )}
 
-      <Tarjeta className="mt-6" titulo="Reporte individual" subtitulo="Todas las sesiones de un nadador en el período, carril por carril, en CSV (se abre con Excel).">
+      <Tarjeta className="mt-6" titulo="Reporte individual" subtitulo="Todas las sesiones de un nadador en el período, carril por carril: en PDF (con la evolución de su velocidad) o en CSV (se abre con Excel).">
         <div className="flex flex-wrap items-end gap-3">
           <select value={individual} onChange={(e) => setIndividual(e.target.value)} className="min-w-[14rem] rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm" aria-label="Nadador del reporte">
             <option value="">Elegí un nadador</option>
             {ranking.map((r) => <option key={r.clave} value={r.clave}>{r.nombre}</option>)}
           </select>
-          <button onClick={exportarIndividual} disabled={!individual} className={BOTON.primario}><Download className="size-4" /> Descargar reporte individual</button>
+          <button onClick={exportarIndividualPdf} disabled={!individual} className={BOTON.primario}><Download className="size-4" /> Descargar reporte individual (.pdf)</button>
+          <button onClick={exportarIndividual} disabled={!individual} className={BOTON.secundario}><Download className="size-4" /> (.csv)</button>
         </div>
       </Tarjeta>
 
