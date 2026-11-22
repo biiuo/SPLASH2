@@ -48,7 +48,7 @@ services:
     build: ./ServidorWEB/frontend
     restart: unless-stopped
     depends_on:
-      backend:e
+      backend:
         condition: service_healthy
     environment:
       BACKEND_URL: http://backend:3001   # el frontend reenvía /api/... al backend por la red interna
