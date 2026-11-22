@@ -42,7 +42,6 @@ mediamtx*
 *.exe
 
 # Editor / local
-**/.claude/settings.local.json
 .vscode/
 .idea/
 *.log
