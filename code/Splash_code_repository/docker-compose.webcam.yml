@@ -1,0 +1,16 @@
+# Probar con la webcam de la PC (solo Linux): se suma al compose de desarrollo.
+#
+#   docker compose -f docker-compose.dev.yml -f docker-compose.webcam.yml up --watch ia
+#   docker compose -f docker-compose.dev.yml -f docker-compose.webcam.yml run --rm --no-deps --entrypoint python ia probar_enlace.py
+#
+# Va aparte porque si /dev/video0 no existe, Docker no arranca el contenedor.
+# Otra webcam: WEBCAM=/dev/video2 en el .env (ls /dev/video* para ver cuáles hay; suelen venir de a dos y la que
+# sirve es la primera de cada par).
+# En Windows Docker no puede usar la webcam: ahí se usa webcam.ps1 (ver docker-compose.dev.yml).
+
+services:
+  ia:
+    devices:
+      - ${WEBCAM:-/dev/video0}:/dev/video0
+    environment:
+      CAMERA_SOURCE: "0"

@@ -1,0 +1,9 @@
+@reference "../../app/globals.css";
+
+.limite-error {
+  @apply rounded-xl border border-red-200 bg-red-50 p-4 text-red-900;
+}
+
+.limite-error__boton {
+  @apply mt-3 min-h-11 rounded-lg px-3 font-semibold underline;
+}

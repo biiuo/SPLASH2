@@ -1,0 +1,11 @@
+node_modules
+dist
+*.md
+Dockerfile
+.dockerignore
+test
+src/infrastructure/persistence/generated
+# el .env es para correr el backend fuera de Docker; en Docker las variables las pone docker-compose (y no deben quedar
+# dentro de la imagen)
+.env
+.env.*

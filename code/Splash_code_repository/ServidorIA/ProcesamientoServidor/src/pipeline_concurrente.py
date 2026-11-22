@@ -1,0 +1,672 @@
+"""
+Splash - pipeline concurrente: la captura y el procesamiento no dependen uno del otro
+
+    [hilo de captura] --último frame--> [hilo de inferencia] --> identidades estables --> métricas
+
+  * La captura lee la cámara sin parar a la velocidad de la cámara y NUNCA espera al modelo.
+  * La inferencia toma siempre el frame MÁS RECIENTE. Si el modelo es más lento que la cámara,
+    los frames viejos se descartan (modo "vivo"): la latencia no crece y la cola no se llena.
+  * Cada frame lleva el timestamp del instante en que se capturó (en un archivo, el tiempo
+    del video). Los tiempos de cruce de nodo y las velocidades se calculan con ESE valor, así
+    que descartar frames o tardar en procesar no altera la medida.
+  * Después del tracker, GestorIdentidades (identidad.py) convierte los IDs de ByteTrack en
+    una identidad estable por nadador.
+
+Modos de la fuente:
+  vivo     cámara/RTSP/webcam: descarta frames viejos (lo que se usa en producción).
+  archivo  video grabado: procesa TODOS los frames (para analizar y medir offline).
+
+Ejemplos:
+    # sin torch ni modelo: detector y tracker simulados, para ver la concurrencia
+    python pipeline_concurrente.py --simulado --source video.mp4 --segundos 10
+
+    # real (necesita torch, boxmot y best.pt)
+    python pipeline_concurrente.py --source rtsp://... --weights best.pt --swimmer-only --zones zones.json --mostrar
+    python pipeline_concurrente.py --source video.mp4 --modo archivo --track-buffer-s 4 --fps-proceso 10 --conf 0.10
+"""
+import argparse
+import queue
+import os
+import sys
+import threading
+import time
+from pathlib import Path
+
+# RTSP por TCP: por UDP la red pierde paquetes y el stream se corta. Tiene que ir ANTES de importar cv2.
+# Si la variable ya está definida en el entorno, se respeta.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from enviador import EnviadorBackend  # noqa: E402
+from fantasmas import MapaFantasmas  # noqa: E402
+from identidad import GestorIdentidades  # noqa: E402
+from grabador import GrabadorActividad, hora_de  # noqa: E402
+from latido import PublicadorLatido  # noqa: E402
+from registro import RegistroCSV  # noqa: E402
+from publicador_frame import PublicadorFrame  # noqa: E402
+from trayectoria import Trayectorias  # noqa: E402
+from zonas_activas import ZonasActivas  # noqa: E402
+
+PREFIJOS_CAMARA = ("rtsp://", "rtmp://", "http://", "https://")
+
+
+class Captura(threading.Thread):
+    """Lee la fuente sin parar y deja los frames en una cola de un solo lugar."""
+
+    def __init__(self, fuente, descartar, tiempo_real, parar):
+        super().__init__(daemon=True, name="captura")
+        self.fuente = fuente
+        self.descartar = descartar
+        self.tiempo_real = tiempo_real
+        self.parar = parar
+        self.cola = queue.Queue(maxsize=1 if descartar else 8)
+        self.terminado = threading.Event()
+        self.capturados = 0
+        self.descartados = 0
+        self.fps_fuente = 25.0
+        self.t_inicio = None
+        self.ultimo_frame = None    # el último frame leído (lo usa el publicador del frame de calibración)
+        self.conectada = False      # si la fuente está transmitiendo ahora (lo informa el heartbeat)
+
+    def _abrir(self, es_archivo):
+        """Abre la fuente. Una cámara puede no estar transmitiendo todavía (la simulada se prende cuando uno quiere, la
+        real puede estar reiniciándose): se reintenta cada 2 s hasta que responda. Un archivo que no abre es un error."""
+        avisado = False
+        while not self.parar.is_set():
+            cap = cv2.VideoCapture(self.fuente)
+            if cap.isOpened():
+                self.conectada = True
+                if avisado:
+                    print(f"[captura] conectado a {self.fuente}")
+                return cap
+            cap.release()
+            if es_archivo:
+                print(f"ERROR: no pude abrir {self.fuente}")
+                return None
+            if not avisado:
+                print(f"[captura] {self.fuente} no transmite todavía: reintento cada 2 s")
+                avisado = True
+            self.parar.wait(2)
+        return None
+
+    def run(self):
+        es_archivo = isinstance(self.fuente, str) and not self.fuente.lower().startswith(PREFIJOS_CAMARA)
+        cap = self._abrir(es_archivo)
+        if cap is None:
+            self.terminado.set()
+            return
+        self.fps_fuente = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        self.t_inicio = time.time()
+        idx = 0
+        try:
+            while not self.parar.is_set():
+                ret, frame = cap.read()
+                if not ret:
+                    if es_archivo:
+                        break
+                    # la cámara se cortó (o se apagó la simulada): se espera a que vuelva, sin terminar el programa
+                    print("[captura] se cortó el video; espero a que vuelva")
+                    self.conectada = False
+                    cap.release()
+                    cap = self._abrir(es_archivo)
+                    if cap is None:
+                        break
+                    continue
+                # cámara: reloj real; archivo: tiempo del video (reproducible)
+                t_cap = idx / self.fps_fuente if es_archivo else time.time()
+                paquete = (idx, t_cap, frame)
+                self.ultimo_frame = frame
+                if self.descartar:
+                    try:
+                        self.cola.put_nowait(paquete)
+                    except queue.Full:
+                        try:
+                            self.cola.get_nowait()
+                            self.descartados += 1
+                        except queue.Empty:
+                            pass
+                        self.cola.put_nowait(paquete)
+                else:
+                    while not self.parar.is_set():
+                        try:
+                            self.cola.put(paquete, timeout=0.2)
+                            break
+                        except queue.Full:
+                            continue
+                idx += 1
+                self.capturados += 1
+                if es_archivo and self.tiempo_real:   # un archivo imita a una cámara: a su ritmo
+                    espera = self.t_inicio + idx / self.fps_fuente - time.time()
+                    if espera > 0:
+                        time.sleep(espera)
+        finally:
+            self.conectada = False
+            if cap is not None:
+                cap.release()
+            self.terminado.set()
+
+
+class Inferencia(threading.Thread):
+    """Toma el frame más reciente, detecta, rastrea y asigna identidades estables.
+
+    debe_procesar(): si se indica y devuelve False (no hay sesión), el modelo NO corre: con una cámara los frames se
+    leen y se descartan (la conexión sigue viva y al empezar la sesión no hay que reconectar); con un archivo se
+    espera sin avanzar el video. crear_tracker(): al volver a procesar se empieza con un tracker limpio, para que no
+    se mezclen los nadadores de la sesión anterior."""
+
+    def __init__(self, captura, detector, tracker, gestor, zonas_activas, parar, on_resultado=None,
+                 debe_procesar=None, crear_tracker=None, on_frame=None, fantasmas=None, ver_crudas=False):
+        super().__init__(daemon=True, name="inferencia")
+        self.ver_crudas = ver_crudas     # dibuja detecciones y tracks crudos en la vista y en los clips (depuración)
+        self.ultimas_crudas = (np.empty((0, 6)), np.empty((0, 7)))
+        self.fantasmas = fantasmas  # MapaFantasmas o None: descarta detecciones fijas (reflejos)
+        self.captura, self.detector, self.tracker = captura, detector, tracker
+        self.gestor, self.zonas_activas, self.parar = gestor, zonas_activas, parar
+        self.on_resultado = on_resultado
+        self.on_frame = on_frame    # on_frame(t_cap, frame, estables): para el grabador de clips (nunca debe bloquear)
+        self.debe_procesar, self.crear_tracker = debe_procesar, crear_tracker
+        self.procesados = 0
+        self.en_espera = 0          # frames descartados porque no había sesión
+        self.esperando = False
+        # tiempo procesando de verdad (con sesión), para que los fps no se diluyan con el tiempo en pausa
+        self.t_activo = 0.0
+        self._desde = None          # cuándo empezó el procesamiento en curso (None = en pausa)
+        self._procesados_desde = 0
+        self.ids_bytetrack = set()
+        self.ultimo = None          # (idx, t_captura, tracks_estables, frame)
+        self.terminado = threading.Event()
+
+    @property
+    def zonas_vista(self):
+        """Las zonas que se están usando ahora (para dibujarlas), o None."""
+        return self.zonas_activas.zonas if self.zonas_activas else None
+
+    @property
+    def fps_activo(self):
+        """Frames procesados por segundo, contando solo el tiempo en que de verdad hubo sesión."""
+        t = self.t_activo + (time.time() - self._desde if self._desde else 0.0)
+        return self.procesados / t if t > 0 else 0.0
+
+    def cerrar_tramo(self):
+        """Terminó un procesamiento (se acabó la sesión o el programa): suma su tiempo e informa a cuántos fps fue."""
+        if self._desde is None:
+            return
+        dur = time.time() - self._desde
+        n = self.procesados - self._procesados_desde
+        self.t_activo += dur
+        self._desde = None
+        print(f"[inferencia] fin del procesamiento: {n} frames en {dur:.1f} s -> {n / max(dur, 1e-6):.1f} fps")
+
+    def _esperar_sesion(self):
+        """Sin sesión: no corre el modelo. Devuelve True si hay que saltear este ciclo."""
+        if self.debe_procesar is None or self.debe_procesar():
+            if self.esperando:
+                self.esperando = False
+                print("[inferencia] hay sesión: empiezo a procesar")
+                if self.crear_tracker:
+                    self.tracker = self.crear_tracker()
+            if self._desde is None:
+                self._desde, self._procesados_desde = time.time(), self.procesados
+            return False
+        if not self.esperando:
+            self.esperando = True
+            self.cerrar_tramo()
+            print("[inferencia] sin sesión activa: el modelo queda en pausa hasta que se inicie una desde la web")
+        if self.captura.descartar:          # cámara: leer y tirar, para no perder la conexión
+            try:
+                idx, t_cap, frame = self.captura.cola.get(timeout=0.2)
+                self.en_espera += 1
+                self.ultimo = (idx, t_cap, np.empty((0, 7)), frame)
+            except queue.Empty:
+                pass
+        else:                               # archivo: el video no avanza hasta que haya sesión
+            self.parar.wait(0.2)
+        return True
+
+    def run(self):
+        try:
+            while not self.parar.is_set():
+                if self._esperar_sesion():
+                    if self.captura.terminado.is_set() and self.captura.cola.empty():
+                        break
+                    continue
+                try:
+                    idx, t_cap, frame = self.captura.cola.get(timeout=0.2)
+                except queue.Empty:
+                    if self.captura.terminado.is_set():
+                        break
+                    continue
+                if frame is None or frame.size == 0:
+                    continue    # frame roto (la cámara se cortó): no se le pasa al modelo
+                # zonas nuevas (la sesión usa otra posición de cámara, o el video resultó de otro tamaño que el que
+                # se supuso al arrancar): se cambian entre dos frames, nunca a mitad de uno
+                if self.zonas_activas:
+                    cambio = self.zonas_activas.ajustar_tamano(frame.shape[1], frame.shape[0])
+                    cambio = self.zonas_activas.aplicar_pendiente() or cambio
+                    if cambio and self.gestor:
+                        self.gestor.cambiar_carriles(self.zonas_activas.carriles)
+                det = self.detector(frame)
+                zonas = self.zonas_activas.zonas if self.zonas_activas else None
+                if zonas is not None:
+                    det, _ = zonas.split(det)
+                if self.fantasmas:
+                    self.fantasmas.observar(det, t_cap)
+                    det = self.fantasmas.filtrar(det)
+                tracks = self.tracker.update(det, frame)
+                self.ultimas_crudas = (det, np.asarray(tracks))
+                if len(tracks):     # sin tracks, reshape(0, -1) falla
+                    for t in np.asarray(tracks).reshape(len(tracks), -1):
+                        self.ids_bytetrack.add(int(t[4]))
+                estables = self.gestor.update(tracks, t_cap) if self.gestor else tracks
+                self.procesados += 1
+                self.ultimo = (idx, t_cap, estables, frame)
+                if self.on_resultado:
+                    self.on_resultado(idx, t_cap, estables)
+                if self.on_frame:
+                    self.on_frame(t_cap, dibujar_crudas(frame.copy(), *self.ultimas_crudas) if self.ver_crudas else frame, estables)
+        finally:
+            self.terminado.set()
+
+
+# ---------------- componentes simulados (para probar sin torch) ----------------
+class DetectorSimulado:
+    """3 nadadores, uno por carril, con una demora fija que imita a un modelo lento."""
+
+    def __init__(self, demora_s):
+        self.demora_s = demora_s
+
+    def __call__(self, frame):
+        time.sleep(self.demora_s)
+        x = 100 + (time.time() * 60) % 700
+        return np.array([[x - 40, y - 15, x + 40, y + 15, 0.8, 1] for y in (100, 200, 300)])
+
+
+class TrackerSimulado:
+    """Imita la fragmentación de ByteTrack: el nadador 1 cambia de ID cada 25 frames."""
+
+    def __init__(self):
+        self.n = 0
+
+    def update(self, det, frame):
+        self.n += 1
+        filas = []
+        for i, d in enumerate(det):
+            tid = (i + 1) if i else 100 + self.n // 25
+            filas.append([*d[:4], tid, d[4], d[5]])
+        return np.array(filas)
+
+
+CARRILES_SIMULADOS = {f"lane{4 + i}": [[0, y - 50], [900, y - 50], [900, y + 50], [0, y + 50]]
+                      for i, y in enumerate((100, 200, 300))}
+
+
+def construir_real(args, activas):
+    """activas: ZonasActivas. El recorte se lee en cada frame, así cambia cuando cambian las zonas."""
+    import realtime_local_test as rt                  # importa torch y boxmot recién acá
+    from conteo import suprimir_contenidas
+    from tracker_util import crear_bytetrack
+
+    model = rt.cargar_modelo(args.weights, args.conf)
+
+    def crear_tracker():
+        return crear_bytetrack(args.track_thresh, args.match_thresh, args.track_buffer_s,
+                               args.fps_proceso, args.min_conf, args.asso_func)[0]
+
+    tracker, usados = crear_bytetrack(args.track_thresh, args.match_thresh, args.track_buffer_s,
+                                      args.fps_proceso, args.min_conf, args.asso_func)
+    print(f"ByteTrack: {usados}")
+
+    def detector(frame):
+        # con recorte el modelo solo ve los carriles; las cajas vuelven a coordenadas del frame completo
+        recorte = activas.recorte
+        vista = recorte.aplicar(frame) if recorte else frame
+        if vista.size == 0:     # recorte fuera del frame: mejor el frame completo que tirar abajo la inferencia
+            vista, recorte = frame, None
+        det = rt.detectar(model, vista, args.img_size, args.letterbox)
+        if recorte:
+            det = recorte.volver(det)
+        det = det[det[:, 5] == args.swimmer_class] if args.swimmer_only else det
+        return suprimir_contenidas(det, args.contenidas)   # cabeza marcada como otro nadador
+
+    return detector, tracker, crear_tracker
+
+
+def dibujar_crudas(vista, dets, tracks):
+    """Depuración (--ver-crudas): lo que ve el modelo ANTES de elegir nadador. Blanco = detecciones (con su confianza),
+    azul = tracks de ByteTrack (con su ID). Lo que la identidad por carril elige sigue en naranja."""
+    for d in np.asarray(dets).reshape(len(dets), -1) if len(dets) else []:
+        cv2.rectangle(vista, (int(d[0]), int(d[1])), (int(d[2]), int(d[3])), (255, 255, 255), 1)
+        if d.shape[0] > 4:
+            cv2.putText(vista, f"{d[4]:.2f}", (int(d[0]), int(d[3]) + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+    for t in np.asarray(tracks).reshape(len(tracks), -1) if len(tracks) else []:
+        cv2.rectangle(vista, (int(t[0]) - 2, int(t[1]) - 2), (int(t[2]) + 2, int(t[3]) + 2), (255, 120, 0), 1)
+        cv2.putText(vista, f"id{int(t[4])}", (int(t[2]) + 4, int(t[1]) + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 120, 0), 1)
+    return vista
+
+
+def dibujar(frame, estables, texto, zonas=None):
+    """La vista de depuración: cajas con el id de cada nadador, las zonas (si se dan) y una línea de estado."""
+    vista = frame.copy()
+    if zonas is not None:
+        for z, poli in zip(zonas.zones, zonas._polys):
+            es_carril = str(z["name"]).lower().startswith(("lane", "carril"))
+            color = (255, 160, 40) if es_carril else (160, 160, 160)
+            pts = np.asarray(poli, dtype=np.int32).reshape(-1, 1, 2)
+            cv2.polylines(vista, [pts], True, color, 2)
+            cv2.putText(vista, str(z["name"]), (int(pts[0, 0, 0]) + 4, int(pts[0, 0, 1]) + 18),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+    for x1, y1, x2, y2, sid, conf, _ in np.asarray(estables).reshape(-1, 7):
+        cv2.rectangle(vista, (int(x1), int(y1)), (int(x2), int(y2)), (0, 140, 255), 2)
+        cv2.putText(vista, f"nadador {int(sid)}  {conf:.2f}", (int(x1), int(y1) - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 140, 255), 2)
+    # línea de estado: si no cabe en el ancho del video, sigue en otra línea (se corta en los " | ")
+    escala = max(0.5, min(0.8, vista.shape[1] / 1600))
+    lineas, actual = [], ""
+    for parte in texto.split(" | "):
+        prueba = f"{actual} | {parte}" if actual else parte
+        if actual and cv2.getTextSize(prueba, cv2.FONT_HERSHEY_SIMPLEX, escala, 2)[0][0] > vista.shape[1] - 20:
+            lineas.append(actual)
+            actual = parte
+        else:
+            actual = prueba
+    lineas.append(actual)
+    for i, linea in enumerate(lineas):
+        cv2.putText(vista, linea, (10, int(28 * escala / 0.7) + i * int(30 * escala / 0.7)), cv2.FONT_HERSHEY_SIMPLEX, escala,
+                    (0, 255, 255), 2)
+    return vista
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Captura e inferencia concurrentes con identidades estables")
+    ap.add_argument("--source", required=True, help="RTSP, índice de webcam o archivo")
+    ap.add_argument("--modo", choices=["vivo", "archivo"], default=None,
+                    help="vivo: descarta frames viejos | archivo: procesa todos (por defecto según la fuente)")
+    ap.add_argument("--simulado", action="store_true", help="detector y tracker de mentira (sin torch)")
+    ap.add_argument("--demora-simulada", type=float, default=0.30, help="segundos por frame del detector simulado")
+    ap.add_argument("--segundos", type=float, default=0, help="cortar después de N segundos (0 = hasta el final)")
+    ap.add_argument("--mostrar", action="store_true", help="abrir ventana (q para salir)")
+    ap.add_argument("--weights", default=os.environ.get("SPLASH_WEIGHTS") or str(Path(__file__).resolve().parents[1] / "modelo" / "best.pt"))
+    ap.add_argument("--img-size", type=int, default=640)
+    ap.add_argument("--conf", type=float, default=0.10, help="umbral bajo: el tracker usa las detecciones débiles")
+    ap.add_argument("--track-thresh", type=float, default=0.30)
+    ap.add_argument("--min-conf", type=float, default=0.10, help="umbral bajo de ByteTrack (track_low_thresh)")
+    ap.add_argument("--track-buffer-s", type=float, default=4.0, help="segundos que ByteTrack espera a un perdido")
+    ap.add_argument("--fps-proceso", type=float, default=10.0, help="FPS a los que se espera procesar (escala el buffer)")
+    ap.add_argument("--match-thresh", type=float, default=0.9)
+    ap.add_argument("--asso-func", default="diou", choices=["iou", "diou", "giou", "ciou", "centroid"],
+                    help="cómo ByteTrack asocia cajas entre frames; diou corta menos los tracks (695 -> 175 IDs en la prueba)")
+    ap.add_argument("--contenidas", type=float, default=0.8,
+                    help="descartar una caja si más de esta fracción cae dentro de otra (0 = desactivado)")
+    ap.add_argument("--letterbox", action="store_true")
+    ap.add_argument("--swimmer-only", action="store_true")
+    ap.add_argument("--swimmer-class", type=int, default=1)
+    ap.add_argument("--zones", default=None, help="zones.json; los polígonos lane*/carril* definen los carriles "
+                                                  "y el recorte que ve el modelo. Con --backend-url, al unirse a una "
+                                                  "sesión se reemplazan por las de la calibración de la sesión")
+    ap.add_argument("--sin-recorte", action="store_true", help="con --zones, pasar el frame completo al modelo")
+    ap.add_argument("--margen-recorte", type=float, default=0.03, help="margen alrededor de los carriles (proporción)")
+    ap.add_argument("--max-por-carril", type=int, default=1)
+    ap.add_argument("--max-hueco", type=float, default=20.0, help="segundos que una identidad perdida sigue viva")
+    ap.add_argument("--ver-crudas", action="store_true",
+                    help="depuración: dibuja las detecciones del modelo (blanco, con su confianza) y los tracks de ByteTrack (azul, con su ID) "
+                         "en la ventana y en los clips, para ver si el modelo ve al nadador aunque no sea el que se elige")
+    ap.add_argument("--aprender-fantasmas", type=float, default=0.0, metavar="SEG",
+                    help="con la piscina VACÍA y una sesión activa, aprende SEG segundos qué detecciones son fijas (un reflejo) "
+                         "y desde ahí las descarta; se guarda en --fantasmas")
+    ap.add_argument("--fantasmas", default=None, metavar="ARCHIVO",
+                    help="donde se guardan los fantasmas aprendidos (y de donde se cargan si no se aprende)")
+    ap.add_argument("--quieta-s", type=float, default=2.0,
+                    help="identidad por carril: una caja que se queda en la misma posición más de estos segundos está quieta "
+                         "(espuma, reflejo, nadador descansando) y pierde contra una que no lo está")
+    ap.add_argument("--radio-quieta", type=float, default=0.35,
+                    help="radio (en diagonales de caja) de 'la misma posición' para decidir si una caja está quieta")
+    ap.add_argument("--rumbo", action="store_true",
+                    help="activa la regla del rumbo (ignorar cajas que quedan detrás del nadador respecto a hacia dónde va, o fuera de su "
+                         "alcance). Apagada por defecto: en las pruebas con video grabado no hizo falta y deja más tramos estimados; "
+                         "úsala si la identidad se pega a un fantasma en la vuelta")
+    ap.add_argument("--rumbo-s", type=float, default=6.0,
+                    help="con --rumbo: segundos máximos sin ver al nadador durante los que se sigue ignorando lo que queda detrás de él")
+    ap.add_argument("--identidad-por-track", action="store_true",
+                    help="comportamiento anterior: identidades por track de ByteTrack con re-enlace (por defecto, con carriles "
+                         "definidos, la identidad es el carril y no cambia en toda la sesión)")
+    ap.add_argument("--backend-url", default=os.environ.get("BACKEND_URL"),
+                    help="si se indica, manda las posiciones a la sesión activa del backend (por ejemplo http://backend:3001)")
+    ap.add_argument("--sesion", default=os.environ.get("SESION_ID") or None,
+                    help="id de la sesión a la que enviar; por defecto se une a la que esté activa")
+    ap.add_argument("--frame-cada-s", type=float, default=float(os.environ.get("FRAME_CADA_S", "3")),
+                    help="cada cuántos segundos dejar el último frame de la cámara en el backend, para calibrar desde la web (0 = no mandar)")
+    ap.add_argument("--guardar-video", metavar="CARPETA", default=os.environ.get("GUARDAR_VIDEO") or None,
+                    help="graba clips en esta carpeta SOLO mientras hay nadadores (sin parar el stream)")
+    ap.add_argument("--video-continuo", action="store_true",
+                    help="con --guardar-video: un solo clip por sesión con TODO lo procesado (haya o no nadadores), sin cortarlo "
+                         "(tope de 8 h por clip); en vez de clips cortos solo con actividad")
+    ap.add_argument("--video-pre-s", type=float, default=3.0, help="segundos de video ANTES de la primera detección")
+    ap.add_argument("--video-post-s", type=float, default=10.0, help="segundos que se sigue grabando tras la última detección")
+    ap.add_argument("--video-max-min", type=float, default=10.0, help="duración máxima de un clip (minutos); luego abre otro")
+    ap.add_argument("--video-fps", type=float, default=10.0, help="fps de los clips (se ven a velocidad real con cualquier valor)")
+    ap.add_argument("--video-max-gb", type=float, default=5.0, help="tope de disco de los clips: borra los más viejos")
+    ap.add_argument("--registro-csv", metavar="ARCHIVO", default=os.environ.get("REGISTRO_CSV") or None,
+                    help="guarda en un CSV cada posición que se manda al backend (para depurar)")
+    ap.add_argument("--hz-envio", type=float, default=3.0, help="posiciones por segundo y por nadador que se envían")
+    ap.add_argument("--extrapolar-max-s", type=float, default=1.5,
+                    help="segundos que se extrapola la posición de un nadador perdido antes de mantener la última")
+    ap.add_argument("--salto-max-px-s", type=float, default=120.0,
+                    help="filtro de saltos: velocidad máxima creíble en la imagen (px/s); 0 = sin filtro")
+    ap.add_argument("--salto-margen-px", type=float, default=60.0, help="filtro de saltos: tolerancia fija (px)")
+    ap.add_argument("--salto-confirmar-s", type=float, default=1.5,
+                    help="filtro de saltos: segundos que una posición lejana debe mantenerse para aceptarla")
+    args = ap.parse_args()
+
+    fuente = int(args.source) if str(args.source).isdigit() else args.source
+    es_archivo = isinstance(fuente, str) and not fuente.lower().startswith(PREFIJOS_CAMARA)
+    modo = args.modo or ("archivo" if es_archivo and not args.simulado else "vivo")
+
+    sonda = cv2.VideoCapture(fuente)
+    ancho, alto = int(sonda.get(cv2.CAP_PROP_FRAME_WIDTH)), int(sonda.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    sonda.release()
+
+    activas = None   # con el detector simulado los carriles son fijos y las zonas del backend no aplican
+    if args.simulado:
+        detector, tracker, crear_tracker = DetectorSimulado(args.demora_simulada), TrackerSimulado(), TrackerSimulado
+        carriles = CARRILES_SIMULADOS
+    else:
+        activas = ZonasActivas(ancho, alto, margen_recorte=args.margen_recorte, sin_recorte=args.sin_recorte)
+        if args.zones:
+            activas.cargar_archivo(args.zones)
+        detector, tracker, crear_tracker = construir_real(args, activas)
+        carriles = activas.carriles
+
+    gestor = GestorIdentidades(carriles=carriles, max_hueco_s=args.max_hueco, max_por_carril=args.max_por_carril,
+                                un_nadador_por_carril=not args.identidad_por_track,
+                                quieta_s=args.quieta_s, radio_quieta=args.radio_quieta,
+                                usar_rumbo=args.rumbo, rumbo_s=args.rumbo_s)
+    parar = threading.Event()
+
+    def al_unirse(sesion):
+        """Cada sesión usa las zonas de la posición de cámara (calibración) con la que empezó."""
+        cal = sesion.get("calibracion_id")
+        if activas is None or not cal:
+            return
+        archivo = enviador.pedir_zonas(cal)
+        if archivo and archivo.get("zones"):
+            activas.proponer(archivo, f"calibración {cal[:8]} de la sesión")
+        else:
+            print(f"AVISO: la calibración {cal[:8]} de la sesión no tiene zonas; sigo con las de {activas.origen}. "
+                  "Dibujalas en la web (Zonas de análisis).")
+
+    # envío al backend: posiciones en píxeles a un ritmo fijo; lo medido y lo estimado van marcados.
+    # --registro-csv también las anota en un archivo (con o sin backend).
+    enviador, al_resultado, registro, trayectorias = None, None, None, None
+    if args.registro_csv:
+        registro = RegistroCSV(args.registro_csv)
+        print(f"Registro CSV de las posiciones enviadas: {args.registro_csv}")
+    if args.backend_url:
+        if not carriles:
+            print("AVISO: todavía no hay carriles (zonas lane*/carril*): no se envía nada hasta que la sesión traiga "
+                  "las zonas de su calibración.")
+        enviador = EnviadorBackend(args.backend_url, args.sesion, al_unirse=al_unirse,
+                                   token=os.environ.get("IA_TOKEN") or None)
+    if enviador or registro:
+        trayectorias = Trayectorias(args.hz_envio, args.extrapolar_max_s, args.max_hueco,
+                                    args.salto_max_px_s, args.salto_margen_px, args.salto_confirmar_s)
+        # cámara: t_cap ya es la hora real; archivo: t_cap es el tiempo del video y se suma a la hora de arranque
+        base_ms = time.time() * 1000 if es_archivo else 0.0
+
+        def al_resultado(idx, t_cap, estables):
+            for m in trayectorias.procesar(estables, gestor, t_cap):
+                muestra = {"carril": m["carril"], "identidad": m["identidad"], "px": m["px"],
+                           "t": int(round(base_ms + m["t"] * 1000))}
+                if m["estimada"]:
+                    muestra["estimada"] = True
+                if registro:
+                    registro.escribir(muestra)
+                if enviador:
+                    enviador.encolar(muestra)
+
+    # clips de video solo con nadadores
+    grabador = None
+    if args.guardar_video:
+        grabador = GrabadorActividad(args.guardar_video, dibujar, pre_s=args.video_pre_s, post_s=args.video_post_s,
+                                     max_clip_s=(8 * 3600 if args.video_continuo else args.video_max_min * 60), max_gb=args.video_max_gb,
+                                     fps_salida=args.video_fps, continuo=args.video_continuo)
+        grabador.start()
+        print(f"Grabando clips solo con nadadores en: {args.guardar_video} "
+              f"({args.video_pre_s:g} s antes, {args.video_post_s:g} s después, tope {args.video_max_gb:g} GB)")
+
+    def al_frame(t_cap, frame, estables):
+        # las cajas de la sesión: solo cuenta como "hay nadador" lo que está en un carril de la sesión
+        grabador.ofrecer(t_cap, frame, estables, activas.zonas if activas else None)
+
+    captura = Captura(fuente, descartar=(modo == "vivo"), tiempo_real=(modo == "vivo" and es_archivo), parar=parar)
+    # con backend y sin una sesión fija, el modelo solo corre mientras haya una sesión activa
+    debe_procesar = (lambda: enviador.en_sesion) if enviador and not args.sesion else None
+    inferencia = Inferencia(captura, detector, tracker, gestor, activas, parar, on_resultado=al_resultado,
+                            debe_procesar=debe_procesar, crear_tracker=crear_tracker,
+                            on_frame=al_frame if grabador else None,
+                            ver_crudas=args.ver_crudas,
+                            fantasmas=MapaFantasmas(args.aprender_fantasmas, args.fantasmas) if (args.aprender_fantasmas > 0 or args.fantasmas) else None)
+
+    print(f"Modo: {modo} | fuente: {fuente} | {ancho}x{alto}")
+    t0 = time.time()
+    publicador = None
+    if args.backend_url and args.frame_cada_s > 0:
+        publicador = PublicadorFrame(args.backend_url, lambda: captura.ultimo_frame, token=os.environ.get("IA_TOKEN") or None,
+                                     cada_s=args.frame_cada_s)
+        publicador.start()
+    latido = None
+    if args.backend_url:
+        previo = {"t": time.time(), "procesados": 0, "capturados": 0}
+
+        def estado_actual():
+            # fps de los últimos segundos (desde el latido anterior), no el promedio desde que arrancó
+            ahora = time.time()
+            dt = max(ahora - previo["t"], 1e-6)
+            fps = (inferencia.procesados - previo["procesados"]) / dt
+            fps_cam = (captura.capturados - previo["capturados"]) / dt
+            previo.update(t=ahora, procesados=inferencia.procesados, capturados=captura.capturados)
+            return {
+                "camara_conectada": bool(captura.conectada),
+                "procesando": bool(captura.conectada and not inferencia.esperando and not inferencia.terminado.is_set()),
+                "fps": round(fps, 1),
+                "fps_camara": round(fps_cam, 1),
+                "sesiones": len(enviador.sesiones) if enviador else 0,
+                "identidades": len(gestor.estados),
+                "pendientes_envio": enviador.pendientes if enviador else 0,
+                "errores_envio": enviador.errores if enviador else 0,
+                "zonas": activas.origen if activas else "simuladas",
+            }
+
+        latido = PublicadorLatido(args.backend_url, estado_actual, token=os.environ.get("IA_TOKEN") or None)
+        latido.start()
+    if enviador:
+        enviador.start()
+    captura.start()
+    inferencia.start()
+
+    mostrar_zonas = [True]
+    try:
+        while not inferencia.terminado.is_set():
+            time.sleep(0.05 if args.mostrar else 0.2)
+            ahora = time.time()
+            transcurrido = ahora - t0
+            if args.segundos and transcurrido >= args.segundos:
+                break
+            if args.mostrar and inferencia.ultimo:
+                _, t_cap, est, frame = inferencia.ultimo
+                en_vivo = t_cap > 1e9          # cámara: t_cap es la hora real; archivo: tiempo del video
+                partes = ["esperando que se inicie una sesion en la web"] if inferencia.esperando else [
+                    f"captura {captura.capturados / transcurrido:.1f} fps",
+                    f"proceso {inferencia.fps_activo:.1f} fps",
+                    f"identidades {len(gestor.estados)}"]
+                if en_vivo:
+                    # edad del frame al mostrarlo (cola + modelo) y hora de captura: para medir el retraso real
+                    partes.append(f"edad {1000 * (ahora - t_cap):.0f} ms")
+                if enviador:
+                    partes.append(f"pend {enviador.pendientes} err {enviador.errores}")
+                if grabador and grabador.grabando:
+                    partes.append("REC")
+                vista = dibujar(frame, est, " | ".join(partes), inferencia.zonas_vista if mostrar_zonas[0] else None)
+                if args.ver_crudas:
+                    dibujar_crudas(vista, *inferencia.ultimas_crudas)
+                cv2.putText(vista, f"ahora {hora_de(ahora)}", (10, vista.shape[0] - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 255, 255), 2)
+                if en_vivo:
+                    cv2.putText(vista, f"frame {hora_de(t_cap)}", (10, vista.shape[0] - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                                (0, 255, 255), 2)
+                cv2.imshow("pipeline concurrente - q salir | z zonas | s foto", vista)
+                tecla = cv2.waitKey(1) & 0xFF
+                if tecla == ord("q"):
+                    break
+                if tecla == ord("z"):
+                    mostrar_zonas[0] = not mostrar_zonas[0]
+                if tecla == ord("s"):
+                    carpeta = Path(args.guardar_video or ".")
+                    carpeta.mkdir(parents=True, exist_ok=True)
+                    marca = time.strftime("%Y%m%d_%H%M%S")
+                    cv2.imwrite(str(carpeta / f"captura_{marca}.jpg"), frame)
+                    cv2.imwrite(str(carpeta / f"captura_{marca}_anotada.jpg"), vista)
+                    print(f"[ventana] foto guardada: {carpeta / f'captura_{marca}.jpg'} (y la anotada)")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        parar.set()
+        if grabador:
+            grabador.cerrar()
+        if registro:
+            registro.cerrar()
+        if latido:
+            latido.cerrar()
+        if publicador:
+            publicador.cerrar()
+        captura.join(timeout=3)
+        inferencia.join(timeout=3)
+        if enviador:
+            enviador.cerrar()
+        cv2.destroyAllWindows()
+
+    dur = max(time.time() - t0, 1e-6)
+    print("\nResumen")
+    print(f"  duración              {dur:.1f} s")
+    print(f"  capturados            {captura.capturados}  ({captura.capturados / dur:.1f} fps; fuente {captura.fps_fuente:.1f} fps)")
+    inferencia.cerrar_tramo()
+    activo = inferencia.t_activo
+    print(f"  procesados            {inferencia.procesados}  "
+          + (f"({inferencia.procesados / activo:.1f} fps en {activo:.1f} s con sesión)" if activo > 0 else "(no hubo sesión)"))
+    print(f"  descartados           {captura.descartados}")
+    print(f"  sin sesión (en pausa) {inferencia.en_espera}")
+    print(f"  IDs de ByteTrack      {len(inferencia.ids_bytetrack)}")
+    print(f"  identidades estables  {len(gestor.estados)}")
+    print(f"  re-enlaces / duplicados descartados: {gestor.reenlaces} / {gestor.duplicados}")
+    if trayectorias:
+        print(f"  filtro de saltos: {trayectorias.saltos_descartados} detecciones descartadas, "
+              f"{trayectorias.saltos_confirmados} saltos confirmados")
+    if enviador:
+        print(f"  enviadas al backend   {enviador.enviadas} en {enviador.lotes} lotes "
+              f"(eventos {enviador.eventos}, tramos {enviador.tramos}); sin enviar: {enviador.pendientes}; "
+              f"sin sesión: {enviador.descartadas_sin_sesion}; errores: {enviador.errores}")
+
+
+if __name__ == "__main__":
+    main()

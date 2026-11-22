@@ -1,0 +1,5 @@
+# Archivos de vídeo
+*.mp4
+
+# Caché de Python
+__pycache__/

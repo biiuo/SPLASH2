@@ -1,0 +1,3 @@
+# Los scripts de shell deben terminar en LF o fallan dentro de Linux/Docker
+*.sh text eol=lf
+Dockerfile text eol=lf

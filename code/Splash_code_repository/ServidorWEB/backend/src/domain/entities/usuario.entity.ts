@@ -1,0 +1,36 @@
+// Una persona que usa el sistema y lo que puede hacer según su rol.
+
+export type Rol = 'administrador' | 'entrenador' | 'nadador'
+
+export const ROLES: readonly Rol[] = ['administrador', 'entrenador', 'nadador']
+
+/** Roles disponibles en el registro público; las cuentas de entrenador requieren aprobación. */
+export const ROLES_REGISTRABLES: readonly Rol[] = ['entrenador', 'nadador']
+
+/** Rol inicial de una cuenta creada mediante registro público. */
+export const ROL_REGISTRO_PUBLICO: Rol = 'nadador'
+
+export type Usuario = {
+  id: string
+  email: string
+  nombre: string
+  rol: Rol
+  activo: boolean
+  /** Cuándo se creó la cuenta (ISO). */
+  creado_en?: string
+  /** Teléfono de contacto (opcional). */
+  telefono?: string | null
+  /** Entrenador que se registró y espera la aprobación del administrador (no puede iniciar sesión). */
+  pendiente?: boolean
+}
+
+/** Lo que va dentro del token: quién es y qué rol tiene. */
+export type Identidad = { id: string; rol: Rol; nombre: string }
+
+/**
+ * Quien hace un pedido a la API: una persona con sesión iniciada, o el servidor de IA (que se identifica con un token
+ * fijo, IA_TOKEN, y solo puede mandar posiciones y leer lo que necesita para medir).
+ */
+export type Solicitante = ({ tipo: 'usuario' } & Identidad) | { tipo: 'servicio'; nombre: string }
+
+export const MIN_LARGO_CONTRASENA = 8

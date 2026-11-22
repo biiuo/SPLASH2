@@ -1,0 +1,41 @@
+import { Global, Module } from '@nestjs/common'
+
+import { CALIBRACION_REPOSITORY } from '../../domain/repositories/calibracion.repository'
+import { CONFIGURACION_REPOSITORY } from '../../domain/repositories/configuracion.repository'
+import { RESULTADOS_REPOSITORY } from '../../domain/repositories/resultados.repository'
+import { SESION_REPOSITORY } from '../../domain/repositories/sesion.repository'
+import { GRUPO_REPOSITORY, NADADOR_REPOSITORY } from '../../domain/repositories/nadador.repository'
+import { USUARIO_REPOSITORY } from '../../domain/repositories/usuario.repository'
+import { PrismaGrupoRepository, PrismaNadadorRepository } from '../../infrastructure/repositories/prisma-nadador.repository'
+import { PrismaUsuarioRepository } from '../../infrastructure/repositories/prisma-usuario.repository'
+import { LATIDO_REPOSITORY } from '../../domain/repositories/latido.repository'
+import { PrismaLatidoRepository } from '../../infrastructure/repositories/prisma-latido.repository'
+import { OBJETIVO_REPOSITORY } from '../../domain/repositories/objetivo.repository'
+import { PrismaObjetivoRepository } from '../../infrastructure/repositories/prisma-objetivo.repository'
+import { PERFIL_NADADOR_REPOSITORY } from '../../domain/repositories/perfil-nadador.repository'
+import { PrismaPerfilNadadorRepository } from '../../infrastructure/repositories/prisma-perfil-nadador.repository'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaCalibracionRepository } from '../../infrastructure/repositories/prisma-calibracion.repository'
+import { PrismaConfiguracionRepository } from '../../infrastructure/repositories/prisma-configuracion.repository'
+import { PrismaResultadosRepository } from '../../infrastructure/repositories/prisma-resultados.repository'
+import { PrismaSesionRepository } from '../../infrastructure/repositories/prisma-sesion.repository'
+
+/** Conecta cada interfaz de repositorio del dominio con su implementación de Prisma. Es el único lugar que las une. */
+@Global()
+@Module({
+  providers: [
+    PrismaService,
+    { provide: CONFIGURACION_REPOSITORY, useClass: PrismaConfiguracionRepository },
+    { provide: CALIBRACION_REPOSITORY, useClass: PrismaCalibracionRepository },
+    { provide: SESION_REPOSITORY, useClass: PrismaSesionRepository },
+    { provide: RESULTADOS_REPOSITORY, useClass: PrismaResultadosRepository },
+    { provide: USUARIO_REPOSITORY, useClass: PrismaUsuarioRepository },
+    { provide: NADADOR_REPOSITORY, useClass: PrismaNadadorRepository },
+    { provide: GRUPO_REPOSITORY, useClass: PrismaGrupoRepository },
+    { provide: LATIDO_REPOSITORY, useClass: PrismaLatidoRepository },
+    { provide: OBJETIVO_REPOSITORY, useClass: PrismaObjetivoRepository },
+    { provide: PERFIL_NADADOR_REPOSITORY, useClass: PrismaPerfilNadadorRepository },
+  ],
+  exports: [PrismaService, CONFIGURACION_REPOSITORY, CALIBRACION_REPOSITORY, SESION_REPOSITORY, RESULTADOS_REPOSITORY, USUARIO_REPOSITORY, NADADOR_REPOSITORY, GRUPO_REPOSITORY, LATIDO_REPOSITORY, OBJETIVO_REPOSITORY, PERFIL_NADADOR_REPOSITORY],
+})
+export class DbModule {}

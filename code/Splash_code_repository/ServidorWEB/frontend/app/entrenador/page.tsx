@@ -1,0 +1,95 @@
+'use client'
+
+import { Activity, CheckCircle2, PlayCircle, Users } from 'lucide-react'
+import Link from 'next/link'
+
+import { metricas, useDatosEntrenador } from '@/components/entrenador/datos'
+import { BOTON_HERO, CifraHero, HeroPanel } from '@/components/hero-panel'
+import { Aviso, BOTON, EstadoSesion, Kpi, Tarjeta } from '@/components/nadador/ui'
+import { SesionPanel } from '@/features/sesion'
+import { useCuenta } from '@/lib/cuenta'
+import { fechaCorta, formatearMetros, formatearVel, horaCorta } from '@/lib/largos'
+
+const DIA = 24 * 60 * 60 * 1000
+const hoy = (ahora: number) => new Date(ahora).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+
+/** Dashboard del entrenador: su grupo de un vistazo y las últimas sesiones. */
+export default function DashboardEntrenador() {
+  const { usuario } = useCuenta()
+  const { datos, problema, actualizado } = useDatosEntrenador()
+  const inicioHoy = new Date(actualizado).setHours(0, 0, 0, 0)
+  const sesiones = datos?.sesiones ?? []
+  const deHoy = sesiones.filter((s) => Date.parse(s.inicio) >= inicioHoy)
+  const semana = sesiones.filter((s) => Date.parse(s.inicio) >= actualizado - 7 * DIA && s.estado !== 'cancelada')
+  const rendimiento = metricas(semana.flatMap((s) => s.por_carril.map((c) => ({ sesion: s, carril: c }))))
+
+  return (
+    <>
+      <HeroPanel
+        foto={2}
+        etiqueta={hoy(actualizado)}
+        titulo={`Hola, ${usuario?.nombre.split(' ')[0] ?? ''}.`}
+        resaltado="Tu equipo, en el agua."
+        bajada="El resumen de tus grupos y tus entrenamientos."
+        acciones={
+          <>
+            <Link href="/entrenador/grupos" className={BOTON_HERO.claro}>Mis grupos</Link>
+            <Link href="/entrenador/monitoreo" className={BOTON_HERO.vidrio}>Monitoreo en vivo</Link>
+          </>
+        }
+        lateral={datos ? <><CifraHero valor={String(datos.nadadores.length)} texto="nadadores" /><CifraHero valor={String(sesiones.filter((s) => s.estado === 'activa').length)} texto="sesiones en curso" /></> : undefined}
+      />
+      {problema && <div className="mb-6"><Aviso tipo="error">{problema}</Aviso></div>}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi icono={Users} etiqueta="Nadadores asignados" valor={datos ? String(datos.nadadores.length) : '…'} nota="en tus grupos, sin repetir" />
+        <Kpi icono={Activity} etiqueta="Sesiones de hoy" valor={datos ? String(deHoy.length) : '…'} />
+        <Kpi icono={PlayCircle} etiqueta="Sesiones activas" valor={datos ? String(sesiones.filter((s) => s.estado === 'activa').length) : '…'} />
+        <Kpi icono={CheckCircle2} etiqueta="Sesiones finalizadas" valor={datos ? String(sesiones.filter((s) => s.estado === 'finalizada').length) : '…'} />
+      </div>
+
+      <div className="mt-6">
+        <SesionPanel />
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Tarjeta titulo="Rendimiento del grupo" subtitulo="Últimos 7 días, todos tus nadadores.">
+          <dl className="grid grid-cols-2 gap-4 text-sm">
+            <Dato k="Distancia" v={formatearMetros(rendimiento.distancia_m)} />
+            <Dato k="Velocidad media" v={formatearVel(rendimiento.velocidad_media_ms)} />
+            <Dato k="Mejor velocidad" v={formatearVel(rendimiento.velocidad_max_ms)} nota="largo detectado" />
+            <Dato k="Largos completos" v={String(rendimiento.largos)} />
+          </dl>
+        </Tarjeta>
+      </div>
+
+      <Tarjeta titulo="Últimas sesiones" className="mt-6" accion={<Link href="/entrenador/historial" className={BOTON.secundario}>Ver historial</Link>}>
+        {datos && sesiones.length === 0 && <Aviso>Todavía no iniciaste sesiones.</Aviso>}
+        <ul className="divide-y divide-[#F1F5F9]">
+          {sesiones.slice(0, 6).map((s) => (
+            <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+              <div>
+                <p className="font-medium">{fechaCorta(s.inicio)} {horaCorta(s.inicio)}{s.grupo ? ` · ${s.grupo}` : ' · libre'}</p>
+                <p className="text-xs text-[#64748B]">{s.por_carril.map((c) => `${c.carril}: ${c.nadador ?? '—'}`).join(' · ') || 'sin carriles'} · {formatearMetros(s.distancia_m)}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <EstadoSesion estado={s.estado} />
+                <Link href={`/entrenador/historial/${s.id}`} className="text-xs font-semibold text-[#2563EB] hover:underline">Ver detalle</Link>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Tarjeta>
+    </>
+  )
+}
+
+function Dato({ k, v, nota }: { k: string; v: string; nota?: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-[#64748B]">{k}</dt>
+      <dd className="mt-0.5 text-lg font-semibold">{v}</dd>
+      {nota && <dd className="text-xs text-[#94A3B8]">{nota}</dd>}
+    </div>
+  )
+}
