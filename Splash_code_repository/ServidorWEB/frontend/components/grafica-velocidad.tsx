@@ -65,18 +65,27 @@ export function GraficaVelocidad({ tramos, eventos, inicio, hasta, enCurso, nada
   if (series.length === 0) return null
 
   const segmentos = series.flatMap((s) => s.segmentos)
-  // el eje llega hasta ahora si sigue en curso; si ya terminó, hasta el último dato (una hora sin datos no aplasta lo que sí hay)
-  const t1 = Math.max(enCurso ? hasta : 0, ...segmentos.map((g) => g.hasta))
-  const duracion = Math.max(t1 - inicio, 1000)
+  // el eje va del primer dato al último, con un poco de aire a los lados: el rato inicial sin detecciones (o uno final)
+  // no se dibuja. Si la sesión sigue en curso el borde derecho es "ahora". Las marcas siguen contando desde el inicio
+  // de la sesión, así que un dato a los 02:20 se lee 02:20 aunque la gráfica no arranque en 00:00.
+  const primerDato = Math.min(...segmentos.map((g) => g.desde))
+  const ultimoDato = Math.max(...segmentos.map((g) => g.hasta))
+  const margen = Math.max(5000, (Math.max(ultimoDato, enCurso ? hasta : 0) - primerDato) * 0.03)
+  const t0 = Math.max(inicio, primerDato - margen)
+  const t1 = enCurso ? Math.max(hasta, ultimoDato) : ultimoDato + margen
+  const duracion = Math.max(t1 - t0, 1000)
+  const recortada = t0 - inicio >= 1000
   // la escala vertical sale de las velocidades creíbles: un salto del rastreo de 5 m/s no aplasta todo lo demás
   const vCreible = Math.max(1.5, ...segmentos.filter((g) => !g.sospechoso).map((g) => g.v))
   const pasoV = paso(vCreible * 1.1)
   const yMax = Math.ceil((vCreible * 1.05) / pasoV) * pasoV
   const pasoT = (PASOS_S.find((p) => duracion / 1000 / p <= 6) ?? 3600) * 1000
 
-  const x = (t: number) => M.izq + ((t - inicio) / duracion) * (ANCHO - M.izq - M.der)
+  const x = (t: number) => M.izq + ((t - t0) / duracion) * (ANCHO - M.izq - M.der)
   const y = (v: number) => ALTO - M.abajo - (Math.min(v, yMax) / yMax) * (ALTO - M.abajo - M.arriba)
-  const marcasT = Array.from({ length: Math.floor(duracion / pasoT) + 1 }, (_, i) => i * pasoT)
+  // marcas de tiempo "redondas" (desde el inicio de la sesión) que caen dentro del eje
+  const primeraMarca = Math.ceil((t0 - inicio) / pasoT)
+  const marcasT = Array.from({ length: Math.max(0, Math.floor((t1 - inicio) / pasoT) - primeraMarca + 1) }, (_, i) => (primeraMarca + i) * pasoT)
   const marcasV = Array.from({ length: Math.round(yMax / pasoV) + 1 }, (_, i) => i * pasoV)
 
   const conPistas = (carril: number) => !suave && series.filter((s) => s.carril === carril).length > 1
@@ -174,6 +183,7 @@ export function GraficaVelocidad({ tramos, eventos, inicio, hasta, enCurso, nada
         Línea punteada en 0 = descanso: pasaron más de {DESCANSO_S} s sin cruzar una marca distinta de la última. Volver a cruzar la misma marca no cuenta como movimiento.
         {hayDudosos && <> Círculo rojo = velocidad poco creíble (más de {VELOCIDAD_MAX_CREIBLE_MS} m/s), probablemente un salto del rastreo: pasá el mouse para ver el valor.</>}
         {!enCurso && ' La sesión terminó: no se dibuja descanso después del último cruce.'}
+        {recortada && ` El eje empieza en el primer dato (${formatearDuracion(t0 - inicio)} desde el inicio de la sesión): el rato anterior sin mediciones no se dibuja.`}
       </p>
     </div>
   )
