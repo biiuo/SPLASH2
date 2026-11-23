@@ -72,6 +72,26 @@ ByteTrack es un algoritmo de seguimiento multiobjeto propuesto por Zhang et al. 
 
 Los autores reportaron resultados de 80,3 MOTA y 77,3 IDF1 en el conjunto general MOT17, con una velocidad cercana a 30 FPS utilizando una GPU V100. Estos valores corresponden a benchmarks generales de seguimiento sobre personas en entornos terrestres y no deben interpretarse como resultados esperados para Safe Splash 2.
 
+**Funcionamiento.** En cada cuadro, ByteTrack predice la posición de cada trayectoria existente mediante un filtro de Kalman con modelo de velocidad constante y luego asocia las detecciones nuevas en dos etapas:
+
+1. **Primera asociación:** las detecciones de confianza alta ($s \geq \tau_{\text{alta}}$) se emparejan con todas las trayectorias mediante el algoritmo húngaro, usando como costo $1 - \text{similitud}$ entre la caja predicha y la caja detectada.
+2. **Segunda asociación:** las detecciones de confianza baja ($\tau_{\text{baja}} \leq s < \tau_{\text{alta}}$), que otros algoritmos descartan, se emparejan con las trayectorias que quedaron sin pareja. Esto permite recuperar a un nadador parcialmente cubierto por espuma o por una salpicadura.
+3. Las detecciones de confianza alta sin pareja inician trayectorias nuevas, y las trayectorias sin pareja se conservan como "perdidas" durante un número máximo de cuadros antes de eliminarse.
+
+**Medidas de similitud entre cajas.** La medida clásica es la intersección sobre la unión (IoU) entre la caja predicha $B_p$ y la caja detectada $B_d$:
+
+$$
+\text{IoU} = \frac{|B_p \cap B_d|}{|B_p \cup B_d|}
+$$
+
+El IoU vale cero cuando las cajas no se superponen, lo que ocurre con frecuencia cuando la caja es pequeña y se desplaza rápido entre cuadros, como un nadador en el extremo lejano. La variante **DIoU** (*Distance-IoU*) añade una penalización por la distancia entre los centros de ambas cajas:
+
+$$
+\text{DIoU} = \text{IoU} - \frac{\rho^2(\mathbf{c}_p, \mathbf{c}_d)}{c^2}
+$$
+
+donde $\rho(\mathbf{c}_p, \mathbf{c}_d)$ es la distancia euclidiana entre los centros de las cajas y $c$ es la diagonal de la menor caja que contiene a ambas. Así, dos cajas que no se superponen pero están cerca siguen teniendo una similitud informativa, lo que reduce la fragmentación de trayectorias.
+
 ### 2.8. Trayectoria
 
 La trayectoria representa la evolución de la posición de un nadador a través del tiempo. Si el detector proporciona las coordenadas de la región delimitadora y el tracker mantiene la identidad del nadador, es posible construir una secuencia ordenada:
@@ -560,7 +580,7 @@ sequenceDiagram
 | Captura de video | Implementado | Soporta RTSP, RTMP, HTTP, webcam y archivo; mantiene una cola de un solo cuadro (descarta cuadros viejos) y reintenta la reconexión cada 2 s. |
 | Zonas y filtrado espacial | Implementado | Recorte del cuadro según los polígonos de carril de la calibración activa y supresión de detecciones contenidas en otras cajas (umbral 0,8). |
 | Detector YOLOv5s | Implementado | Ajuste fino desde los pesos de DBDoco/yolo-swimmer-detection sobre 3.518 imágenes propias (clases `persona` y `swimmer`), hasta 50 épocas a 960 × 960 px con las primeras capas congeladas. En inferencia, los cuadros de la cámara (1280 × 960 px) se entregan al modelo, que los ajusta internamente a su tamaño de entrada (*letterbox*); confianza mínima 0,10, NMS con IoU 0,45 y ejecución en CUDA. |
-| Seguimiento e identidad | Implementado | ByteTrack con asociación DIoU y buffer de 4 s. Encima, una capa de identidad por carril: un nadador por carril durante toda la sesión, de modo que un cambio de ID del tracker no crea un nadador nuevo. Reglas adicionales: una caja quieta pierde frente a una en movimiento, mapa opcional de reflejos estáticos y una regla opcional de dirección de avance (desactivada por defecto). |
+| Seguimiento e identidad | Implementado | ByteTrack con asociación DIoU y un buffer de 40 cuadros para trayectorias perdidas (parámetros en la sección 11.4). Encima, una capa de identidad por carril: un nadador por carril durante toda la sesión, de modo que un cambio de ID del tracker no crea un nadador nuevo. Reglas adicionales: una caja quieta pierde frente a una en movimiento, mapa opcional de reflejos estáticos y una regla opcional de dirección de avance (desactivada por defecto). |
 | Estimación de posiciones | Implementado | Cuando se pierde al nadador (por ejemplo, oculto tras la baranda), su posición se extrapola con velocidad limitada a 120 px/s durante un máximo de 1,5 s, y se retiene en el último punto medido si se sale del polígono del carril. Estas muestras se marcan como estimadas. |
 | Preprocesamiento | Implementado (según necesidad) | Recorte por región de interés, conversión de color, ajuste de aspecto (*letterbox*) y normalización antes del detector; corrección de perspectiva mediante homografía y corrección opcional de distorsión radial sobre las posiciones. No se aplicaron filtros de iluminación, contraste ni ruido porque el detector alcanzó un desempeño adecuado sin ellos (sección 13.1). |
 | Calibración y homografía | Implementado | Editor visual sobre el cuadro de la cámara; matriz H con ≥ 4 puntos, validación de colinealidad, distorsión radial opcional y error de reproyección en metros y píxeles. |
@@ -616,6 +636,50 @@ sequenceDiagram
 | Servidor de IA ↔ Servidor Web | Implementado | HTTP/JSON y SSE protegidos con cabecera *Bearer* y token de servicio. |
 | Cámara Axis Q1604 | Implementado | Lectura del flujo RTSP por Ethernet desde el portátil del Servidor de IA. |
 | ONNX Runtime Web (CDN) | Experimental | Carga dinámica del entorno de ejecución en el navegador para la variante móvil. |
+
+### 11.4 Procesamiento en el Servidor de IA
+
+El Servidor de IA se organiza en hilos concurrentes, de modo que la lectura de la cámara, la inferencia, el envío de datos y la grabación no se bloquean entre sí. El procesamiento de cada cuadro sigue estas etapas:
+
+1. **Captura.** Un hilo lee el flujo RTSP de la cámara (1280 × 960 px, 30 cuadros por segundo). En **modo en vivo** mantiene una cola de un solo cuadro y descarta los anteriores, de modo que el modelo siempre procesa el cuadro más reciente y el retraso no se acumula. En **modo archivo** (reprocesamiento de video grabado) se procesan todos los cuadros en orden, y el video no avanza mientras no haya una sesión activa. Cada cuadro conserva su instante de captura $t$, que es el que se envía al backend.
+2. **Espera de sesión.** Si no hay una sesión activa en la plataforma web, el modelo queda en pausa y no consume GPU. Al iniciarse una sesión, el Servidor de IA descarga los polígonos de los carriles de la calibración de esa sesión y crea un tracker nuevo.
+3. **Recorte por zonas.** El cuadro se recorta al rectángulo que contiene los polígonos de los carriles 4, 5 y 6, con un margen de 3 %. El modelo solo analiza la zona de interés, lo que reduce las detecciones fuera de la piscina y el tiempo de inferencia.
+4. **Detección (YOLOv5s).** El recorte se ajusta al tamaño de entrada del modelo y se ejecuta la inferencia en la GPU. Las cajas resultantes se devuelven a coordenadas del cuadro completo.
+5. **Filtrado de detecciones.** Se descartan las detecciones cuyo centro queda fuera de los polígonos de los carriles y las cajas contenidas en más de un 80 % dentro de otra (por ejemplo, la cabeza del nadador detectada como un segundo nadador). De forma opcional se descartan "fantasmas": detecciones fijas, como reflejos, aprendidas con la piscina vacía.
+6. **Seguimiento (ByteTrack).** Las detecciones filtradas se asocian con las trayectorias existentes en las dos etapas descritas en la sección 2.7, usando DIoU como medida de similitud.
+7. **Identidad por carril.** Sobre las trayectorias de ByteTrack, una capa propia asigna **un único nadador por carril durante toda la sesión**: si ByteTrack pierde al nadador y le asigna un identificador nuevo, la capa lo vuelve a enlazar con el mismo nadador cuando la caja aparece cerca de la posición esperada (última posición más velocidad estimada). Cuando hay varias cajas en un carril, se elige la más cercana a esa posición esperada, y una caja que permanece quieta más de 2 s (espuma, reflejo) pierde frente a una cercana que se mueve.
+8. **Trayectoria y estimación.** Las posiciones se muestrean a 3 Hz por nadador. Un filtro de saltos rechaza desplazamientos mayores que 60 px más 120 px/s por segundo transcurrido. Si el nadador no se detecta, su posición se extrapola durante un máximo de 1,5 s con una velocidad limitada a 120 px/s, y esas muestras se marcan como **estimadas**.
+9. **Envío.** Un hilo enviador agrupa las muestras (carril, identidad, $t$, $u$, $v$, estimada) en lotes y los envía al backend por HTTPS, con una cola en memoria y reintentos (sección 9.3).
+
+**Parámetros de configuración utilizados.**
+
+| Etapa | Parámetro | Valor | Función |
+| --- | --- | --- | --- |
+| Detector | Umbral de confianza | 0,10 | Umbral bajo para entregar a ByteTrack también las detecciones débiles |
+| Detector | IoU de supresión de no máximos (NMS) | 0,45 | Elimina cajas duplicadas sobre el mismo objeto |
+| Detector | Tamaño de entrada | 640 px | Tamaño al que se ajusta el recorte antes de la inferencia |
+| Detector | Ajuste de aspecto | *Letterbox* en el despliegue con Docker; redimensionamiento directo en las corridas de validación (sección 13.2) | Forma de llevar el recorte al tamaño de entrada |
+| Filtrado | Fracción de caja contenida | 0,8 | Descarta cajas contenidas en otra (cabeza detectada aparte) |
+| Filtrado | Margen del recorte | 3 % | Margen alrededor de los carriles en el recorte |
+| ByteTrack | Umbral de confianza alta ($\tau_{\text{alta}}$) | 0,30 | Detecciones que participan en la primera asociación y pueden crear trayectorias |
+| ByteTrack | Umbral de confianza baja ($\tau_{\text{baja}}$) | 0,10 | Detecciones mínimas que participan en la segunda asociación |
+| ByteTrack | Medida de similitud | DIoU | Similitud entre la caja predicha y la detectada |
+| ByteTrack | Umbral de costo, primera asociación | 0,9 | Acepta parejas con similitud de al menos 0,1 |
+| ByteTrack | Umbral de costo, segunda asociación | 0,4 | Más estricto, porque las detecciones son de baja confianza |
+| ByteTrack | Umbral de costo, trayectorias sin confirmar | 0,8 | Asociación de trayectorias recién creadas |
+| ByteTrack | Cuadros máximos de trayectoria perdida | 40 | Configurado como 4 s a 10 cuadros por segundo de referencia |
+| Identidad | Nadadores por carril | 1 | Una identidad por carril durante toda la sesión |
+| Identidad | Tiempo máximo sin ver al nadador | 20 s | Después de este tiempo la identidad se libera |
+| Identidad | Tiempo para considerar una caja quieta | 2 s | Una caja quieta pierde frente a una cercana en movimiento |
+| Trayectoria | Frecuencia de muestreo enviada | 3 Hz | Posiciones por segundo y por nadador |
+| Trayectoria | Extrapolación máxima | 1,5 s | Tiempo máximo de posiciones estimadas por extrapolación |
+| Trayectoria | Velocidad máxima creíble | 120 px/s | Límite del filtro de saltos y de la extrapolación |
+
+**Justificación de DIoU frente a IoU.** En las pruebas sobre video de la piscina, cambiar la medida de asociación de IoU a DIoU redujo la cantidad de identificadores generados por ByteTrack de 695 a 175 sobre la misma grabación, es decir, una fragmentación de trayectorias cerca de cuatro veces menor. El motivo es que un nadador en el extremo lejano ocupa una caja pequeña que puede desplazarse más que su propio tamaño entre cuadros; con IoU la similitud cae a cero y la trayectoria se corta, mientras que DIoU sigue reconociendo la cercanía de los centros.
+
+**Velocidad de procesamiento.** Con la GPU RTX A5000, el sistema procesó en vivo los cuadros a la tasa de la cámara (cerca de 30 por segundo) sin acumular retraso, y alrededor de 55 cuadros por segundo al reprocesar video grabado: la prueba principal de 6 minutos (10.802 cuadros) se procesó en unos 3 minutos y 17 segundos.
+
+**Observación sobre el buffer de ByteTrack.** El número máximo de cuadros de una trayectoria perdida se calcula como 4 s × 10 cuadros por segundo = 40 cuadros. Como el sistema procesa en realidad cerca de 30 cuadros por segundo, ese buffer equivale a unos 1,3 s. Las pérdidas más largas no se traducen en nadadores nuevos porque la capa de identidad por carril mantiene al nadador hasta 20 s sin detección.
 
 ## 12. Despliegue y operación
 
