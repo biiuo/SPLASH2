@@ -18,7 +18,7 @@ El seguimiento del rendimiento en natación depende hoy en gran medida de la obs
 
 La solución se organiza en dos componentes desacoplados. Un **Servidor de IA** en Python (YOLOv5s ajustado por transferencia de aprendizaje y ByteTrack) se ejecuta localmente en un computador portátil con GPU NVIDIA RTX A5000 conectado a la cámara. Un **Servidor Web** (backend NestJS en Railway, base de datos PostgreSQL en Supabase y frontend Next.js en Vercel) proyecta las posiciones a metros mediante homografía, ejecuta el motor de eventos, almacena los resultados y los muestra en vivo, con control de acceso por roles para administradores, entrenadores y nadadores. El desarrollo siguió un enfoque de prototipado iterativo validado con pruebas en la piscina.
 
-Sobre un conjunto de prueba independiente de 750 imágenes, el detector obtuvo una precisión y un recall de 0,879, un mAP@0,5 de 0,911 y un mAP@0,5:0,95 de 0,563. En una sesión en vivo con dos nadadores simultáneos (carriles 5 y 6), el sistema registró 28 eventos, de los cuales 26 (93 %) fueron observados directamente por el detector, y los 12 tramos calculados se obtuvieron sin inferencia, con velocidades entre 0,59 y 1,03 m/s. En cuatro nados continuos de 200 m realizados por nadadores de la piscina, el error absoluto medio de los tiempos por tramo de 5 m frente a cronómetro manual fue de 1,53 s, dentro de la meta de 2 s. Dos entrenadores y ocho nadadores usaron la plataforma durante sesiones de al menos una hora y la calificaron con 4,4 de 5 estrellas en promedio. Los resultados muestran que una única cámara fija de bajo costo, junto con una arquitectura web desacoplada, permite obtener métricas de entrenamiento útiles en tiempo cercano al real dentro de la zona observada. Las principales limitaciones son las oclusiones cerca de la pared más cercana a la cámara, los reflejos en el extremo lejano y el supuesto de un nadador por carril.
+Sobre un conjunto de prueba independiente de 750 imágenes, el detector obtuvo una precisión y un recall de 0,879, un mAP@0,5 de 0,911 y un mAP@0,5:0,95 de 0,563. La precisión temporal se validó contra una referencia cuadro a cuadro obtenida del video original mediante kimogramas (diagramas distancia-tiempo) de cada carril. En una prueba de 6 minutos con tres nadadores simultáneos (carriles 4, 5 y 6), procesada en dos corridas independientes, el error absoluto medio (MAE) de los tiempos por tramo de 5 m no superó 1,37 s (valores medidos de 1,25 s y 1,34 s, N = 53 tramos por corrida), con sesgo prácticamente nulo y un RMSE de 1,70 s y 1,83 s, por debajo de la meta de 2 s. El error fue menor en la zona central de la piscina (MAE ≈ 1,05 s entre 5 y 15 m) que en el extremo lejano (1,6–2,0 s entre 15 y 25 m), y cada nadador conservó una única identidad durante toda la prueba. Dos entrenadores y ocho nadadores usaron la plataforma durante sesiones de al menos una hora y la calificaron con 4,4 de 5 estrellas en promedio. Los resultados muestran que una única cámara fija de bajo costo, junto con una arquitectura web desacoplada, permite obtener métricas de entrenamiento útiles en tiempo cercano al real dentro de la zona observada. Las principales limitaciones son la menor cobertura y precisión en el extremo lejano (resolución y banderines), los cruces de nodo registrados más de una vez por la oscilación del recuadro de detección, la oclusión de la pared más cercana a la cámara por la baranda y el supuesto de un nadador por carril.
 
 ## 1. Introducción
 
@@ -597,9 +597,9 @@ sequenceDiagram
 | RF-10 | Cumple | Gestión de usuarios, aprobación de entrenadores y asignación de roles. |
 | RF-11 | Cumple | Editor visual de calibración y zonas en la plataforma web. |
 | RNF-01 | Cumple | Resultados visibles en el panel durante la sesión en vivo. |
-| RNF-02 | Cumple | MAE de 1,53 s por tramo de 5 m frente a cronómetro manual (sección 13.2). |
+| RNF-02 | Cumple | MAE de 1,25–1,34 s por tramo de 5 m frente a una referencia cuadro a cuadro (N = 53 por corrida) y 0,84 s frente a cronómetro manual (N = 6) (sección 13.2). |
 | RNF-03 | Cumple (con ajuste) | Inferencia local en GPU de portátil, sin servidor en la nube (sección 9.4). |
-| RNF-04 | Cumple | Probado con 3 nadadores simultáneos, uno por carril. |
+| RNF-04 | Cumple | Probado con 3 nadadores simultáneos, uno por carril: una sola identidad por carril durante toda la prueba, en dos corridas independientes (sección 13.2). |
 | RNF-05 | Cumple | Hash *bcrypt* y RBAC; la revocación de un JWT activo ocurre al vencer el token (12 h). |
 | RNF-06 | Cumple | Latido cada 5 s y cola con reintentos ante caídas cortas; tras varios minutos sin respuesta se dejan de reintentar los envíos. |
 | RNF-07 | Cumple | Entrenadores y nadadores usaron la plataforma sin capacitación técnica; calificación promedio de 4,4/5 (sección 13.3). |
@@ -671,6 +671,8 @@ graph TB
 ### 12.4 Condiciones de operación
 
 * La cámara debe permanecer fija durante la sesión; si se mueve, se recalibra desde la plataforma antes de iniciar una nueva.
+* Se recomienda el montaje en trípode alto y aceptar solo calibraciones con un error de reproyección inferior a 0,3 m (la histéresis del motor de eventos); con errores mayores aumentan los cruces repetidos y los tramos con velocidades poco plausibles (sección 13.2.4).
+* Al reprocesar video grabado (modo archivo), el archivo debe tener una tasa de cuadros constante, ya que el tiempo de cada cuadro se calcula a partir de su índice (sección 14.3).
 * Debe haber un solo nadador por carril observado durante la sesión.
 * Como los motores de eventos y las suscripciones SSE residen en memoria, el backend debe operar con una sola réplica y no debe reiniciarse durante sesiones activas.
 * El canal WebSocket de la variante móvil no exige token; solo debe habilitarse dentro de la red local.
@@ -697,9 +699,24 @@ Los valores son prácticamente iguales a los de la validación en entrenamiento 
 
 **Seguimiento e identidad.** Se probó sobre grabaciones y sesiones reales de la piscina, con hasta tres nadadores simultáneos, uno por carril. Las primeras versiones perdían al nadador al pasar bajo los banderines de espalda y generaban identidades nuevas al recuperarlo. Con la capa de identidad por carril y la estimación acotada de posiciones, cada nadador conserva una sola identidad durante toda la sesión, incluso cuando el tracker lo pierde momentáneamente.
 
-**Calibración.** Se calibró la homografía sobre el cuadro real de la cámara marcando las referencias cada 5 m. Con la calibración activa, el sistema registró los cruces en todos los nodos del largo de 25 m.
+**Calibración.** Se calibró la homografía sobre el cuadro real de la cámara marcando las referencias cada 5 m, con corrección de distorsión radial. La calidad de cada calibración se cuantificó mediante el error cuadrático medio de reproyección en metros, calculado sobre los puntos de referencia marcados:
 
-**Motor de eventos.** Se evaluó con sesiones reales midiendo qué proporción de eventos fue observada directamente (sección 2.9). En una primera prueba de un solo largo (19 de noviembre), solo 6 de 17 eventos (35 %) fueron observados y ninguno de los 8 tramos quedó completamente observado. Tras ajustar la identidad por carril y la estimación de posiciones, la sesión del 20 de noviembre alcanzó 93 % de eventos observados (sección 13.2).
+$$
+\text{RMSE}_{\text{rep}} = \sqrt{\frac{1}{M}\sum_{j=1}^{M} \left\lVert \mathbf{H}\,\mathbf{u}_j - \mathbf{x}_j \right\rVert^2}
+$$
+
+donde $\mathbf{u}_j$ es el punto marcado en la imagen (corregido por distorsión), $\mathbf{x}_j$ su posición real en la piscina y $M$ el número de puntos. La tabla resume las calibraciones utilizadas en la validación:
+
+| Calibración | Montaje | RMSE de reproyección | Uso |
+| --- | --- | --- | --- |
+| 18 de noviembre, 17:10 | Trípode bajo | 0,65 m | Sesión B (sección 13.2) |
+| 19 de noviembre, 13:58 | Trípode bajo | 0,49 m | Sesión de un largo completo |
+| 20 de noviembre, 13:11 | Trípode bajo | 1,39 m | Sesión con cronómetro manual (sección 13.2) |
+| Montaje alto (*footage3*) | Trípode alto | **0,20 m** | Prueba principal con tres nadadores (sección 13.2) |
+
+Con la calibración activa, el sistema registró los cruces en todos los nodos del largo de 25 m. Sin embargo, la validación mostró que un RMSE de reproyección superior a la histéresis del motor de eventos (0,3 m) produce cruces de nodo repetidos y tramos con velocidades poco plausibles, por lo que se recomienda aceptar únicamente calibraciones con RMSE inferior a 0,3 m.
+
+**Motor de eventos.** Se evaluó con sesiones reales midiendo qué proporción de eventos fue observada directamente (sección 2.9). En una primera prueba (19 de noviembre), solo 9 de 23 eventos (39 %) fueron observados. Tras ajustar la identidad por carril y la estimación de posiciones, la sesión de ejemplo del 20 de noviembre alcanzó 93 % de eventos observados (sección 13.2).
 
 **Comunicación y cola.** Se detuvo el backend durante una sesión activa. El latido reflejó la caída y el Servidor de IA conservó los lotes en su cola, reintentando el envío con espera exponencial; cuando el backend volvió dentro de ese margen, los lotes pendientes se entregaron sin duplicados. Si la caída se prolonga varios minutos, el Servidor de IA deja de reintentar y esas muestras se pierden, por lo que la tolerancia a fallos cubre interrupciones cortas de red y no caídas prolongadas del backend.
 
@@ -707,7 +724,7 @@ Los valores son prácticamente iguales a los de la validación en entrenamiento 
 
 ### 13.2 Pruebas de integración
 
-**Sesión en vivo de ejemplo.** Se ejecutó el flujo completo —cámara Axis → Servidor de IA → backend en Railway → base de datos → panel web— en varias sesiones con hasta tres nadadores simultáneos. La tabla resume, como ejemplo, una sesión con dos nadadores en los carriles 5 y 6.
+**Sesión en vivo de ejemplo.** Se ejecutó el flujo completo —cámara Axis → Servidor de IA → backend en Railway → base de datos → panel web— en varias sesiones con hasta tres nadadores simultáneos. La tabla resume, como ejemplo, una sesión del 20 de noviembre con un nadador en el carril 5.
 
 | Indicador | Resultado |
 | --- | --- |
@@ -718,13 +735,111 @@ Los valores son prácticamente iguales a los de la validación en entrenamiento 
 
 Durante la sesión, los eventos y tramos aparecieron en el panel en vivo y quedaron guardados en el historial, desde donde se exportaron como reporte.
 
-**Comparación contra cronómetro manual.** Nadadores de la piscina realizaron cuatro nados continuos de 200 m (ida y vuelta en el largo de 25 m, sin detenerse) en los carriles observados. En paralelo, sus tiempos se tomaron con cronómetro manual, y se comparó el tiempo de cada tramo de 5 m calculado por el sistema con el medido manualmente mediante el error absoluto medio:
+#### 13.2.1 Métricas de error
+
+Para cada tramo de 5 m emparejado entre el sistema y la referencia se define el error con signo
 
 $$
-\text{MAE} = \frac{1}{N}\sum_{i=1}^{N} \left| t_{\text{manual}, i} - t_{\text{sistema}, i} \right|
+e_i = t_{\text{sistema}, i} - t_{\text{referencia}, i}
 $$
 
-El MAE resultante fue de **1,53 s por tramo de 5 m**, por debajo de la meta de 2 s establecida en RNF-02.
+donde $t$ es la duración del tramo. Sobre los $N$ tramos emparejados se calculan:
+
+$$
+\text{MAE} = \frac{1}{N}\sum_{i=1}^{N} |e_i|, \qquad
+\text{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N} e_i^2}, \qquad
+\bar{e} = \frac{1}{N}\sum_{i=1}^{N} e_i, \qquad
+\text{MAPE} = \frac{100\,\%}{N}\sum_{i=1}^{N} \frac{|e_i|}{t_{\text{referencia}, i}}
+$$
+
+El MAE es la métrica principal (meta de RNF-02: MAE < 2 s); el RMSE penaliza los errores grandes, el sesgo $\bar{e}$ indica si el sistema tiende a alargar ($\bar{e} > 0$) o acortar ($\bar{e} < 0$) los tramos, y el MAPE expresa el error relativo a la duración del tramo. La velocidad de cada tramo se obtiene como $v_i = d/t_i$ con $d = 5$ m. Adicionalmente se reporta la **cobertura**, definida como la proporción de tramos reales para los que el sistema generó un tramo.
+
+#### 13.2.2 Comparación contra cronómetro manual
+
+En la sesión del 20 de noviembre (14:05, carril 4, calibración con RMSE de 1,39 m) una nadadora realizó un recorrido continuo mientras sus parciales de 5 m se tomaban con cronómetro manual. De los 10 tramos cronometrados, el sistema emparejó 6:
+
+| Indicador | Resultado |
+| --- | --- |
+| Tramos emparejados | 6 de 10 |
+| MAE | 0,84 s |
+| RMSE | 1,18 s |
+| Sesgo | +0,27 s |
+| Error máximo | 2,52 s |
+| MAPE | 24,5 % |
+
+El MAE cumple la meta, pero el resultado debe interpretarse con cautela: el tamaño de muestra es pequeño, faltan los cuatro tramos entre 5 y 15 m, y la referencia manual incluye el tiempo de reacción del cronometrista. Además, el RMSE de la calibración (1,39 m) supera la histéresis de 0,3 m del motor de eventos, lo que produjo cruces repetidos y velocidades poco plausibles (2,1–2,9 m/s) en algunos tramos. Por estas razones se realizó una validación adicional con una referencia de mayor exactitud.
+
+#### 13.2.3 Validación con referencia cuadro a cuadro
+
+**Método.** Como referencia más exacta que el cronómetro manual, se construyó para cada carril un **kimograma** (diagrama distancia-tiempo) a partir del video original de la cámara:
+
+1. Para cada cuadro, se muestreó el eje central del carril entre 0 y 25 m cada 5 cm, proyectando los puntos de la piscina a la imagen con la inversa de la homografía $\mathbf{H}^{-1}$ y el modelo de distorsión radial de la calibración.
+2. A cada muestra se le restó el fondo estático (mediana temporal de la escena), de modo que solo permanecen los elementos en movimiento.
+3. Las filas resultantes se apilaron en el tiempo. En la imagen obtenida, cada nadador aparece como un trazo diagonal cuya pendiente es su velocidad, y los descansos aparecen como trazos horizontales.
+4. El **tiempo real de cruce** de cada nodo se definió como el frente de subida del trazo sobre la línea del nodo, es decir, el instante en que llega la cabeza del nadador. Cada lectura se verificó visualmente superponiendo las marcas reales y las del sistema sobre el kimograma.
+
+La resolución temporal de la referencia es de 0,1 s (10 cuadros por segundo muestreados). Como comprobación de robustez, el análisis se repitió con un criterio de lectura alternativo (pico de la señal en lugar del frente de subida) y el MAE varió menos de 0,1 s (1,18 s frente a 1,25 s).
+
+**Figura 9 — Kimograma del carril 4.** Distancia (eje vertical, 0–25 m) frente al tiempo (eje horizontal). El trazo oscuro es la nadadora; las marcas azules son los cruces reales, los puntos verdes los cruces observados por el sistema y los rojos los inferidos.
+
+![Kimograma carril 4](<./figuras/kimograma_carril4.jpg>)
+
+**Prueba.** Se utilizó una grabación de 6 minutos (30 cuadros por segundo constantes) con tres nadadores simultáneos, uno por carril: carril 4 (Bella), carril 5 (Kevin) y carril 6 (Luis), con la cámara en trípode alto y una calibración con RMSE de reproyección de 0,20 m. El video se procesó con el sistema completo en **dos corridas independientes** (16:50 y 17:30 del 22 de noviembre), cada una registrada como una sesión distinta en la base de datos. La comparación se realizó sobre el intervalo de 95 a 360 s del video, en el que se leyeron 86 cruces reales y 66 tramos reales.
+
+**Resultados globales.**
+
+| Métrica | Corrida 1 (16:50) | Corrida 2 (17:30) |
+| --- | --- | --- |
+| Tramos emparejados (N) | 53 | 53 |
+| MAE | **1,25 s** | **1,34 s** |
+| RMSE | 1,70 s | 1,83 s |
+| Sesgo $\bar{e}$ | 0,00 s | −0,17 s |
+| Error máximo | 4,68 s | 5,04 s |
+| MAE zona 5–15 m | 1,06 s | 1,03 s |
+| MAE zona 15–25 m | 1,62 s | 1,95 s |
+| Cobertura zona 5–15 m | 90 % | 90 % |
+| Cobertura zona 15–25 m | 67 % | 67 % |
+| Cruces con marca repetida | 13 de 86 (15 %) | 12 de 86 (14 %) |
+
+En la corrida 1, el 51 % de los tramos tuvo un error absoluto menor a 1 s, y el 75 % menor a 2 s (79 % en la corrida 2); la mediana del error absoluto fue de 0,85 s y el percentil 90 de 2,92 s. En la zona central (5–15 m) el MAPE fue de 20,3 % y la velocidad media real fue de 0,91 m/s frente a 0,85 m/s estimada por el sistema, con un error absoluto medio de velocidad de 0,17 m/s. Considerando ambas corridas (N = 106), el MAE combinado es de 1,30 s y el RMSE combinado de 1,77 s, ambos por debajo de la meta de 2 s.
+
+**Resultados por carril (corrida 1).**
+
+| Carril (nadador) | Tramos reales | Cobertura | Cobertura 15–25 m | MAE | Tramos con \|e\| < 1 s (5–15 m) | Dispersión de la marca de cruce | Velocidad media real |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 (Bella) | 27 | 89 % | 9/11 | 1,21 s | 67 % | 0,66 s | 1,09 m/s |
+| 5 (Kevin) | 25 | 72 % | 5/10 | 1,30 s | 62 % | 0,45 s | 0,82 m/s |
+| 6 (Luis) | 14 | 79 % | 4/6 | 1,27 s | 43 % | 1,02 s | 0,61 m/s |
+
+La dispersión de la marca de cruce corresponde a la mediana de la desviación absoluta respecto de la mediana de $t_{\text{sistema}} - t_{\text{real}}$ en cada carril. La cobertura por carril fue idéntica en las dos corridas (89 %, 72 % y 79 %).
+
+**Repetibilidad.** Las dos corridas sobre el mismo video produjeron el mismo patrón de cobertura por carril y por zona y MAE que difieren en menos de 0,1 s. Esto indica que el error del sistema es principalmente **sistemático** —depende de la zona de la piscina y del carril— y no aleatorio, lo que permite identificar con claridad qué componentes conviene mejorar.
+
+**Eventos observados e inferidos.** La tabla compara la proporción de eventos y tramos observados directamente por el detector en la sesión de ejemplo con un nadador y en la prueba principal con tres nadadores simultáneos:
+
+| Indicador | 1 nadador (20 de noviembre) | 3 nadadores, corrida 1 | 3 nadadores, corrida 2 |
+| --- | --- | --- | --- |
+| Eventos observados | 93 % (26/28) | 84 % (122/146) | 77 % (136/177) |
+| Cruces de nodo observados | — | 82 % (98/119) | 77 % (113/147) |
+| Tramos observados | 100 % (12/12) | 80 % (52/65) | 65 % (54/83) |
+| Tramos observados en la zona 5–15 m | — | 89 % (31/35) | 71 % (32/45) |
+
+La proporción de eventos observados fue de 93 % con un nadador y de 77–84 % con tres nadadores simultáneos. La disminución se debe al aumento de oclusiones y oleaje entre carriles y a la mayor proporción de tiempo en la zona lejana; aun así, en ambos escenarios la mayoría de los eventos provino de detecciones directas, lo que cumple el indicador de OE-4.
+
+**Estabilidad de identidad.** En ambas corridas cada carril conservó un único identificador del rastreador durante toda la prueba (carril 4: 15; carril 5: 16; carril 6: 14), sin intercambios de identidad entre carriles, lo que sustenta el cumplimiento de RNF-04 con tres nadadores simultáneos.
+
+#### 13.2.4 Comparación entre montajes de cámara
+
+| Sesión | Montaje | RMSE de calibración | Tramos comparados | MAE | MAE observados | MAE inferidos |
+| --- | --- | --- | --- | --- | --- | --- |
+| B (18 de noviembre, nadadora con tabla) | Trípode bajo | 0,65 m | 5 | 1,82 s | 0,98 s | 2,38 s |
+| Prueba principal (corrida 1) | Trípode alto | 0,20 m | 53 | 1,25 s | 1,21 s | 1,45 s |
+
+Con el montaje bajo y una calibración menos precisa, los tramos inferidos presentan un error más de dos veces mayor que los observados. Con el montaje alto y una calibración de 0,20 m, el error global disminuye y la diferencia entre tramos observados e inferidos se reduce considerablemente. Con ambos montajes se cumple la meta de 2 s, pero con el montaje bajo el margen es de apenas 0,18 s (MAE de 1,82 s), frente a 0,75 s con el montaje alto. Aunque la muestra de la sesión B es pequeña, el resultado respalda la recomendación de instalación de la sección 12.4.
+
+**Figura 10 — Comparación de encuadres.** A la izquierda, el montaje bajo con su calibración superpuesta; a la derecha, el montaje alto utilizado en la prueba principal.
+
+![Comparación de montajes](<./figuras/comparacion_montajes.jpg>)
 
 ### 13.3 Pruebas de usabilidad
 
@@ -740,8 +855,9 @@ El MAE resultante fue de **1,53 s por tramo de 5 m**, por debajo de la meta de 2
 
 * **Sistema completo en funcionamiento:** se construyó y desplegó la cadena completa —cámara, Servidor de IA local con GPU, backend en Railway, base de datos en Supabase y frontend en Vercel— y se usó en sesiones reales en la piscina, con resultados visibles en vivo y guardados en el historial.
 * **Detector:** mAP@0,5 de 0,911 sobre 750 imágenes independientes, sin diferencia frente a la validación, con un dataset propio de solo 3.518 imágenes, muy por debajo de las más de 120.000 usadas por Chern et al. (2025).
-* **Eventos y métricas:** en la sesión del 20 de noviembre, 93 % de los eventos fueron observados directamente y los 12 tramos se calcularon sin inferencia, frente a 35 % de eventos observados en la primera prueba.
-* **Precisión y usabilidad:** MAE de 1,53 s por tramo de 5 m frente a cronómetro manual en cuatro nados de 200 m, y una calificación promedio de 4,4/5 por parte de dos entrenadores y ocho nadadores.
+* **Eventos y métricas:** en la sesión de ejemplo del 20 de noviembre, con un nadador, 93 % de los eventos fueron observados directamente y los 12 tramos se calcularon sin inferencia, frente a 39 % de eventos observados en la primera prueba. Con tres nadadores simultáneos, la proporción de eventos observados fue de 77–84 %, de modo que en ambos escenarios la mayoría de los eventos provino de detecciones directas.
+* **Precisión:** frente a una referencia cuadro a cuadro, con tres nadadores simultáneos y dos corridas independientes, el MAE por tramo de 5 m no superó 1,37 s (1,25 s y 1,34 s medidos, N = 53 por corrida), con sesgo prácticamente nulo; en la zona central de la piscina (5–15 m) el MAE fue de 1,03–1,06 s. Frente a cronómetro manual (N = 6), el MAE fue de 0,84 s.
+* **Usabilidad:** calificación promedio de 4,4/5 por parte de dos entrenadores y ocho nadadores.
 * **Cumplimiento de requerimientos:** se cumplen los 11 requerimientos funcionales y los 9 no funcionales; RF-02 se cumple en las etapas que resultaron necesarias, y en RF-01, RF-04, RF-06 y RNF-03 la forma de cumplirlos cambió respecto al diseño inicial, como se documenta en la sección 11.2.
 
 ### 14.2 Resumen de indicadores
@@ -749,22 +865,35 @@ El MAE resultante fue de **1,53 s por tramo de 5 m**, por debajo de la meta de 2
 | Indicador | Meta | Resultado | Estado |
 | --- | --- | --- | --- |
 | mAP@0,5 del detector (prueba independiente) | Evaluación formal | 0,911 (P = R = 0,879) | Cumple |
-| Eventos observados en sesión real | Mayoría observados | 93 % (26/28) | Cumple |
-| Tramos sin inferencia en sesión real | Mayoría observados | 100 % (12/12) | Cumple |
-| Nadadores simultáneos | Hasta 3 | 3 (uno por carril) | Cumple |
-| MAE frente a cronómetro manual | < 2 s por tramo de 5 m | 1,53 s (cuatro nados de 200 m) | Cumple |
+| Eventos observados, 1 nadador (20 de noviembre) | Mayoría observados | 93 % (26/28) | Cumple |
+| Tramos sin inferencia, 1 nadador (20 de noviembre) | Mayoría observados | 100 % (12/12) | Cumple |
+| Eventos observados, 3 nadadores (prueba principal) | Mayoría observados | 77–84 % (dos corridas) | Cumple |
+| Tramos observados, 3 nadadores (prueba principal) | Mayoría observados | 65–80 % (dos corridas) | Cumple |
+| Nadadores simultáneos | Hasta 3 | 3 (uno por carril), identidad única por carril en 2 corridas | Cumple |
+| MAE frente a referencia cuadro a cuadro | < 2 s por tramo de 5 m | Máximo 1,37 s (medidos: 1,25 s y 1,34 s; N = 53 por corrida) | Cumple |
+| RMSE frente a referencia cuadro a cuadro | < 2 s por tramo de 5 m | 1,70 s y 1,83 s (N = 53 por corrida) | Cumple |
+| MAE zona central / zona lejana | < 2 s | 1,03–1,06 s (5–15 m) / 1,62–1,95 s (15–25 m) | Cumple en ambas zonas; margen reducido en la zona lejana |
+| Cobertura de tramos | — | 90 % (5–15 m) / 67 % (15–25 m) | Parcial en zona lejana |
+| MAE frente a cronómetro manual | < 2 s por tramo de 5 m | 0,84 s (N = 6) | Cumple (muestra reducida) |
+| Calibración de la prueba principal | RMSE < 0,3 m | 0,20 m | Cumple |
 | Rendimiento en vivo | Tiempo cercano al real | ~30 FPS en vivo; ~60 FPS en video pregrabado | Cumple |
 | Calificación de usuarios | ≥ 4/5 | 4,4/5 (2 entrenadores, 8 nadadores) | Cumple |
 
 ### 14.3 Discusión y limitaciones
 
-1. **Precisión frente a la referencia manual:** un MAE de 1,53 s cumple la meta, aunque sigue siendo alto para tramos cortos de 5 m. Parte de ese error proviene del propio cronometraje manual (los mismos errores de reacción que el sistema busca eliminar) y parte de los tramos inferidos cerca de la pared, donde el nadador queda oculto. La alta proporción de eventos observados indica que la mayoría de los tiempos provienen de detecciones reales y no de estimaciones.
-2. **Oclusión en la pared cercana:** con el trípode a 2,5 m, la baranda oculta al nadador cerca de la pared más próxima a la cámara, por lo que los primeros metros suelen inferirse.
-3. **Extremo lejano:** en el extremo lejano el nadador se ve más pequeño y hay más reflejos, y el detector es más débil cuando el nadador se aleja de la cámara.
-4. **Un nadador por carril:** el sistema asume un único nadador por carril; en clases con carriles compartidos no se obtendrían métricas confiables.
-5. **Preprocesamiento:** los filtros de iluminación, contraste y ruido previstos en OE-2 no fueron necesarios; el detector alcanzó un buen desempeño sobre los cuadros recortados y normalizados.
-6. **Decisión sobre el cálculo de métricas:** trasladar la homografía y el motor de eventos al backend simplificó el Servidor de IA y permitió recalcular sesiones ante cambios de calibración, a costa de mantener estado en la memoria del backend (una sola instancia).
-7. **Datos en memoria y seguridad:** la cola de la IA deja de reintentar tras varios minutos sin respuesta del backend y no sobrevive a un reinicio del proceso, un JWT sigue siendo válido hasta su vencimiento aunque la cuenta se desactive, y el canal WebSocket de la variante móvil no tiene autenticación.
+1. **Precisión por tramo:** el MAE se mantuvo como máximo en 1,37 s (1,25–1,34 s medidos), lo que cumple la meta de 2 s con un margen de al menos 0,63 s, y también la cumple el RMSE (1,70–1,83 s), que es una métrica más exigente. El cumplimiento se mantiene en todos los subconjuntos analizados: por zona (1,03–1,06 s en la zona central y 1,62–1,95 s en la lejana), por carril (entre 1,21 s y 1,55 s en ambas corridas) y por montaje (1,82 s con el trípode bajo), aunque el margen es reducido en la zona lejana y con el montaje bajo. El error representa alrededor del 20 % de la duración de un tramo de 5 m, y uno de cada cuatro tramos supera los 2 s de error. El sesgo es prácticamente nulo: el sistema no adelanta ni retrasa los tiempos de forma sistemática, sino que presenta dispersión alrededor del valor real.
+2. **Origen del error de un tramo:** la duración de un tramo es la diferencia entre dos marcas de cruce, por lo que su error depende únicamente del error de esas dos marcas, $e_{a\to b} = \varepsilon_b - \varepsilon_a$, donde $\varepsilon$ es el error de la marca de cada nodo. En consecuencia, el error absoluto no se acumula con la distancia: en la prueba principal, el MAE en recorridos de 10 m (1,83 s) fue del mismo orden que en tramos de 5 m (1,49 s, sobre los mismos tramos), por lo que el error relativo disminuye de aproximadamente 25 % a 16 % al duplicar la distancia. Las métricas acumuladas (por largo o por sesión) son, por tanto, proporcionalmente más confiables que los parciales de 5 m. Cuando el error se concentra en el nodo intermedio, los errores de los dos tramos vecinos tienen signo opuesto y se compensan en el recorrido completo (en la sesión B, −2,74 s y +3,08 s en dos tramos consecutivos, frente a +0,34 s en el recorrido de 10 m).
+3. **Extremo lejano:** entre 15 y 25 m la cobertura desciende del 90 % al 67 % y el MAE aumenta a 1,6–2,0 s. En esa zona el nadador ocupa pocos píxeles y la línea de banderines de espalda (17–22 m) lo ocluye parcialmente y añade movimiento a la escena. El carril 5 es el más afectado: el sistema registró solo 5 de 10 tramos en esa zona.
+4. **Cruces repetidos:** entre el 14 % y el 15 % de los cruces reales fueron registrados dos o más veces en menos de 3 s, principalmente en los nodos de 15 y 20 m. La oscilación del recuadro de detección alrededor de la línea del nodo supera la histéresis de 0,3 m; como cada tramo se mide desde la última marca de salida, el tramo siguiente se acorta y su velocidad se sobreestima (por ejemplo, un tramo de 2,84 m/s marcado como poco creíble en la plataforma). Estos casos explican los errores máximos de 4–5 s.
+5. **Oclusión en la pared cercana:** la baranda oculta al nadador entre 0 y 0,5 m de la pared más próxima a la cámara; en la prueba principal solo el carril 5 registró tramos 5→0 y 0→5.
+6. **Diferencias entre carriles:** el carril 4 fue el más confiable (89 % de cobertura). El carril 5 perdió más tramos en la zona lejana, aunque sus marcas de cruce fueron las más estables (0,45 s de dispersión). El carril 6 presentó la mayor dispersión de las marcas (1,02 s) y la menor proporción de tramos con error menor a 1 s (43 %), coherente con la banda de reflejos y oleaje más intensa entre 0 y 6 m observada en su kimograma.
+7. **Tramos observados e inferidos:** con la calibración de 1,39 m (sesión con cronómetro) y la de 0,65 m (sesión B), los tramos inferidos fueron notablemente menos exactos que los observados. Con la calibración de 0,20 m la diferencia se redujo (1,21 s frente a 1,45 s en la corrida 1), lo que confirma que la calidad de la calibración condiciona la exactitud de las posiciones estimadas.
+8. **Descansos aparentes:** la gráfica de velocidad de la plataforma representa como descanso (velocidad 0) cualquier intervalo de más de 30 s sin cruces de nodos distintos. Cuando el sistema pierde cruces en la zona lejana, ese intervalo aparece como un descanso más largo que el real; en la prueba principal, un descanso real de unos 15 s del carril 5 se representó como uno de 48 s.
+9. **Reprocesamiento de video con tasa de cuadros variable:** al reprocesar grabaciones (modo archivo), el tiempo de cada cuadro se calcula como su índice dividido entre la tasa declarada en el encabezado del archivo. Una grabación del 20 de noviembre declaraba 30 cuadros por segundo, pero contenía 19.857 cuadros en 845 s (23,5 cuadros por segundo efectivos), por lo que las duraciones de esa corrida se subestimaron entre 8 % y 43 % y sus resultados se excluyeron de la validación. Esta limitación no afecta la operación en vivo, que usa la hora de captura de cada cuadro.
+10. **Un nadador por carril:** el sistema asume un único nadador por carril; en clases con carriles compartidos no se obtendrían métricas confiables.
+11. **Preprocesamiento:** los filtros de iluminación, contraste y ruido previstos en OE-2 no fueron necesarios; el detector alcanzó un buen desempeño sobre los cuadros recortados y normalizados.
+12. **Decisión sobre el cálculo de métricas:** trasladar la homografía y el motor de eventos al backend simplificó el Servidor de IA y permitió recalcular sesiones ante cambios de calibración, a costa de mantener estado en la memoria del backend (una sola instancia).
+13. **Datos en memoria y seguridad:** la cola de la IA deja de reintentar tras varios minutos sin respuesta del backend y no sobrevive a un reinicio del proceso, un JWT sigue siendo válido hasta su vencimiento aunque la cuenta se desactive, y el canal WebSocket de la variante móvil no tiene autenticación.
 
 ### 14.4 Conclusiones
 
@@ -772,18 +901,21 @@ El MAE resultante fue de **1,53 s por tramo de 5 m**, por debajo de la meta de 2
 * El ajuste fino de un detector ya especializado en nadadores, con un dataset propio pequeño, fue suficiente para obtener un detector que generaliza a datos nuevos; no fue necesario construir un dataset masivo ni aplicar filtros de preprocesamiento adicionales.
 * Una capa de identidad por carril sobre ByteTrack, junto con una estimación de posiciones acotada y una distinción explícita entre eventos observados e inferidos, fue clave para pasar de 35 % a 93 % de eventos observados y para que el usuario sepa qué tiempos provienen de mediciones directas.
 * La separación entre un Servidor de IA local y un Servidor Web en la nube, comunicados por lotes de posiciones con cola y latido, permitió mantener el video en la red local, desarrollar ambos componentes de forma independiente y tolerar caídas temporales del backend.
-* El sistema alcanzó la precisión objetivo (MAE de 1,53 s frente a la meta de 2 s) y fue bien recibido por sus usuarios reales (4,4/5), lo que confirma que puede apoyar el trabajo del entrenador en sesiones de entrenamiento normales.
+* Validado frente a una referencia cuadro a cuadro con tres nadadores simultáneos, el sistema alcanzó la precisión objetivo (MAE máximo de 1,37 s, con valores medidos de 1,25–1,34 s, y RMSE de 1,70–1,83 s, frente a la meta de 2 s) de forma repetible entre corridas y sin sesgo sistemático, y fue bien recibido por sus usuarios reales (4,4/5), lo que confirma que puede apoyar el trabajo del entrenador en sesiones de entrenamiento normales.
+* La exactitud depende principalmente de la zona de la piscina y de la calidad de la calibración: es mayor en la zona central (MAE ≈ 1,05 s) que en el extremo lejano, y mejora al usar el montaje alto con una calibración de error inferior a 0,3 m. Las métricas acumuladas por largo o por sesión son proporcionalmente más confiables que los parciales de 5 m, porque el error de un tramo depende solo de sus dos marcas extremas.
 
 ## 15. Trabajo futuro
 
 1. **Más nadadores por carril:** extender la capa de identidad para seguir a varios nadadores dentro de un mismo carril, condición habitual en las clases de la piscina.
 2. **Mayor cobertura:** probar un montaje más alto o una segunda cámara para eliminar la oclusión de la baranda en la pared cercana, observar el tramo de 20 a 25 m y ampliar la cobertura a más carriles.
-3. **Mayor precisión:** reducir el error por tramo por debajo de 1,53 s, validando contra grabaciones cuadro a cuadro (más exactas que el cronómetro manual) en sesiones largas y con distintos estilos de nado.
-4. **Mejoras del detector:** reentrenar con más imágenes del montaje final, en particular de nadadores alejándose de la cámara y del extremo lejano con reflejos, y evaluar modelos más recientes de la familia YOLO.
-5. **Robustez:** mantener los reintentos durante caídas prolongadas del backend, persistir en disco la cola de envío del Servidor de IA y el estado de los motores de eventos para tolerar reinicios, y permitir varias réplicas del backend.
-6. **Seguridad:** revocar de forma inmediata los tokens de cuentas desactivadas y autenticar el canal WebSocket de la variante móvil.
-7. **Variante móvil:** optimizar el modelo (cuantización o versiones más livianas) para que la inferencia en el navegador del celular alcance el rendimiento necesario y permita operar sin el portátil con GPU.
-8. **Análisis técnico del nado:** incorporar estimación de pose para métricas como frecuencia y longitud de brazada.
+3. **Mayor precisión:** reducir el error por tramo por debajo de 1,25 s eliminando los cruces repetidos (histéresis adaptativa o filtrado de marcas consecutivas sobre el mismo nodo) y usando como posición de referencia la cabeza del nadador en lugar del centro del recuadro; ampliar la validación cuadro a cuadro a sesiones más largas y a distintos estilos de nado.
+4. **Reprocesamiento de video:** calcular el tiempo de cada cuadro a partir de su marca de tiempo de presentación (PTS) en lugar de su índice, para admitir grabaciones con tasa de cuadros variable.
+5. **Visualización:** distinguir en la gráfica de velocidad entre descanso detectado por el motor de eventos e intervalos sin datos, para que las pérdidas de detección no se presenten como descansos.
+6. **Mejoras del detector:** reentrenar con más imágenes del montaje final, en particular de nadadores alejándose de la cámara y del extremo lejano con reflejos, y evaluar modelos más recientes de la familia YOLO.
+7. **Robustez:** mantener los reintentos durante caídas prolongadas del backend, persistir en disco la cola de envío del Servidor de IA y el estado de los motores de eventos para tolerar reinicios, y permitir varias réplicas del backend.
+8. **Seguridad:** revocar de forma inmediata los tokens de cuentas desactivadas y autenticar el canal WebSocket de la variante móvil.
+9. **Variante móvil:** optimizar el modelo (cuantización o versiones más livianas) para que la inferencia en el navegador del celular alcance el rendimiento necesario y permita operar sin el portátil con GPU.
+10. **Análisis técnico del nado:** incorporar estimación de pose para métricas como frecuencia y longitud de brazada.
 
 ## 16. Referencias
 
