@@ -20,9 +20,9 @@ Presenta una síntesis del proyecto, incluyendo el contexto en el que surge, la 
 
 | Documento | Descripción |
 |---|---|
-| [InformeFinal.md](./docs/InformeFinal.md) | Documento principal del proyecto |
-| [Instalacion.md](./docs/Instalacion.md) | Guía de instalación, desarrollo y despliegue |
-| [Desarrollo.md](./docs/Desarrollo.md) | Detalles técnicos del desarrollo |
+| [InformeFinal.md](./InformeFinal.md) | Documento principal del proyecto |
+| [Instalacion.md](./Instalacion.md) | Guía de instalación, desarrollo y despliegue |
+| [Desarrollo.md](./Desarrollo.md) | Detalles técnicos del desarrollo |
 
 ## Estudiantes
 
