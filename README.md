@@ -29,7 +29,7 @@ Presenta una síntesis del proyecto, incluyendo el contexto en el que surge, la 
 | Nombre | GitHub |
 |---|---|
 | Bella Mejía González | [@biiuo](https://github.com/biiuo) |
-| Kevin Torregrosa Padilla | [@MrManini](https://github.com/MrManini) |
+| Kevin Torregrosa Padilla | [@kjtorregrosa](https://github.com/kjtorregrosa) |
 | Luis Robles Gonzalez | [@luis-988](https://github.com/luis-988) |
 
 ## Tutores
